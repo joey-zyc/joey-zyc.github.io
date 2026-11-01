@@ -1,0 +1,1532 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Z80 指令集详解 · 时序 · 时钟周期</title>
+<style>
+  :root{
+    --bg:#07070d;
+    --panel:#0e0f1a;
+    --panel-2:#12142a;
+    --line:#1e2035;
+    --line-2:#2a2d4a;
+    --txt:#e8eaf6;
+    --dim:#8b90b5;
+    --dim-2:#5f6488;
+    --cyan:#38e1ff;
+    --amber:#ffc857;
+    --pink:#ff5fa2;
+    --green:#5cffa8;
+    --violet:#a78bfa;
+    --orange:#ff9f5a;
+    --red:#ff6b6b;
+    --mono:"JetBrains Mono","SFMono-Regular",Consolas,"Noto Sans Mono CJK SC","Microsoft YaHei",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;background:var(--bg);color:var(--txt);
+    font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+    overflow-x:hidden;
+  }
+  body::before{
+    content:"";position:fixed;inset:0;z-index:-2;pointer-events:none;
+    background:
+      radial-gradient(900px 600px at 12% -8%, rgba(56,225,255,.13), transparent 62%),
+      radial-gradient(820px 620px at 92% 4%, rgba(167,139,250,.12), transparent 62%),
+      radial-gradient(760px 540px at 48% 108%, rgba(255,95,162,.08), transparent 62%);
+  }
+  body::after{
+    content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+    background-image:
+      linear-gradient(rgba(255,255,255,.022) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.022) 1px, transparent 1px);
+    background-size:52px 52px;
+    -webkit-mask-image:radial-gradient(ellipse at 50% 0%, #000 15%, transparent 72%);
+    mask-image:radial-gradient(ellipse at 50% 0%, #000 15%, transparent 72%);
+  }
+  ::selection{background:rgba(56,225,255,.28);color:#fff}
+  a{color:inherit}
+
+  /* ---------- progress + topbar ---------- */
+  #progress{
+    position:fixed;top:0;left:0;height:2px;width:0;z-index:120;
+    background:linear-gradient(90deg,var(--cyan),var(--violet),var(--pink));
+    box-shadow:0 0 12px rgba(56,225,255,.7);
+    transition:width .08s linear;
+  }
+  .topbar{
+    position:sticky;top:0;z-index:100;
+    height:64px;display:flex;align-items:center;gap:18px;
+    padding:0 clamp(16px,3vw,36px);
+    background:rgba(7,7,13,.72);
+    border-bottom:1px solid rgba(42,45,74,.55);
+    backdrop-filter:blur(18px) saturate(140%);
+    -webkit-backdrop-filter:blur(18px) saturate(140%);
+  }
+  .brand{display:flex;align-items:center;gap:12px;min-width:0}
+  .brand-mark{
+    width:34px;height:34px;border-radius:8px;flex:0 0 auto;
+    display:grid;place-items:center;
+    font:700 12px/1 var(--mono);letter-spacing:.04em;color:#061018;
+    background:linear-gradient(145deg,var(--cyan),#7cf0ff 55%,#2bb8d6);
+    box-shadow:0 0 22px rgba(56,225,255,.35), inset 0 1px 0 rgba(255,255,255,.6);
+  }
+  .brand-text{display:flex;flex-direction:column;line-height:1.15;min-width:0}
+  .brand-text b{font-size:14px;letter-spacing:.06em;font-weight:650;white-space:nowrap}
+  .brand-text span{font:10px/1.4 var(--mono);color:var(--dim);letter-spacing:.18em;white-space:nowrap}
+  .topbar .spacer{flex:1}
+  .search{
+    position:relative;display:flex;align-items:center;min-width:0;
+    background:rgba(18,20,42,.85);
+    border:1px solid var(--line-2);border-radius:10px;
+    padding:0 12px;height:38px;width:min(320px,42vw);
+    transition:border-color .2s, box-shadow .2s;
+  }
+  .search:focus-within{border-color:rgba(56,225,255,.65);box-shadow:0 0 0 3px rgba(56,225,255,.12)}
+  .search svg{width:15px;height:15px;color:var(--dim);flex:0 0 auto}
+  .search input{
+    background:none;border:0;outline:0;color:var(--txt);
+    font:13px var(--sans);padding:0 8px;width:100%;min-width:0;
+  }
+  .search input::placeholder{color:var(--dim-2)}
+  .search kbd{
+    font:10px var(--mono);color:var(--dim);border:1px solid var(--line-2);
+    border-bottom-width:2px;border-radius:4px;padding:1px 5px;background:#15172c;
+  }
+  .count-pill{
+    font:11px var(--mono);color:var(--dim);
+    border:1px solid var(--line);border-radius:999px;padding:4px 10px;
+    white-space:nowrap;background:rgba(18,20,42,.6);
+  }
+  @media(max-width:720px){
+    .brand-text span{display:none}
+    .count-pill{display:none}
+    .search{width:auto;flex:1}
+  }
+
+  /* ---------- layout ---------- */
+  .wrap{max-width:1320px;margin:0 auto;padding:0 clamp(16px,3vw,36px)}
+  .hero{
+    display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:center;
+    padding:clamp(40px,7vw,84px) 0 clamp(32px,5vw,56px);
+  }
+  .eyebrow{
+    display:inline-flex;align-items:center;gap:10px;
+    font:11px var(--mono);letter-spacing:.22em;color:var(--cyan);
+    text-transform:uppercase;margin-bottom:20px;
+  }
+  .eyebrow::before{content:"";width:26px;height:1px;background:linear-gradient(90deg,var(--cyan),transparent)}
+  .hero h1{
+    margin:0 0 18px;font-size:clamp(34px,5.4vw,62px);line-height:1.04;
+    letter-spacing:-.035em;font-weight:700;
+  }
+  .hero h1 .grad{
+    background:linear-gradient(100deg,#fff 0%,var(--cyan) 45%,var(--violet) 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .hero p.lede{
+    margin:0 0 28px;color:var(--dim);font-size:clamp(14px,1.5vw,16px);
+    line-height:1.85;max-width:56ch;
+  }
+  .hero p.lede code{
+    font:12.5px var(--mono);color:var(--cyan);background:rgba(56,225,255,.08);
+    border:1px solid rgba(56,225,255,.16);border-radius:4px;padding:1px 5px;
+  }
+  .quick{display:flex;flex-wrap:wrap;gap:9px}
+  .quick a{
+    text-decoration:none;font:12px var(--mono);color:var(--dim);
+    border:1px solid var(--line-2);border-radius:999px;padding:7px 13px;
+    background:rgba(18,20,42,.55);
+    transition:.18s ease;
+  }
+  .quick a:hover{color:#041018;background:var(--cyan);border-color:var(--cyan);transform:translateY(-1px)}
+  .stats{display:flex;gap:30px;margin-top:34px;flex-wrap:wrap}
+  .stat b{display:block;font:600 20px var(--mono);color:#fff;letter-spacing:-.02em}
+  .stat span{font:11px var(--sans);color:var(--dim-2);letter-spacing:.08em}
+
+  /* ---------- chip art ---------- */
+  .chip-wrap{display:grid;place-items:center;min-height:320px;position:relative}
+  .chip-wrap::before{
+    content:"";position:absolute;width:340px;height:340px;border-radius:50%;
+    background:radial-gradient(circle,rgba(56,225,255,.16),transparent 66%);
+    filter:blur(8px);
+  }
+  .chip{
+    position:relative;width:270px;height:300px;border-radius:20px;
+    background:linear-gradient(148deg,#1d2036 0%,#0b0c16 52%,#15172a 100%);
+    border:1px solid #303453;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.10),
+      inset 0 -40px 70px rgba(0,0,0,.65),
+      0 30px 70px -20px rgba(0,0,0,.85),
+      0 0 60px rgba(56,225,255,.08);
+    display:flex;flex-direction:column;justify-content:center;align-items:center;
+    transform:rotate(-2deg);
+  }
+  .chip::before,.chip::after{
+    content:"";position:absolute;left:14px;right:14px;height:16px;
+    background:repeating-linear-gradient(90deg,#3b4064 0 7px,transparent 7px 17px);
+    border-radius:2px;opacity:.85;
+  }
+  .chip::before{top:-16px}
+  .chip::after{bottom:-16px}
+  .chip-brand{
+    font:10px var(--mono);letter-spacing:.5em;color:var(--dim);margin-bottom:2px;
+    padding-left:.5em;
+  }
+  .chip-name{
+    font:800 92px/1 var(--mono);letter-spacing:-.05em;
+    background:linear-gradient(160deg,#eafcff 0%,#38e1ff 42%,#2a7fa8 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    filter:drop-shadow(0 0 24px rgba(56,225,255,.35));
+  }
+  .chip-sub{
+    font:9.5px var(--mono);letter-spacing:.24em;color:var(--dim-2);margin-top:10px;
+    padding-left:.24em;
+  }
+  .chip-notch{
+    position:absolute;top:14px;left:50%;transform:translateX(-50%);
+    width:34px;height:10px;border-radius:0 0 20px 20px;
+    border:1px solid #262a45;border-top:0;background:#08090f;
+  }
+  .chip-glow{
+    position:absolute;inset:auto 30px 26px;height:1px;
+    background:linear-gradient(90deg,transparent,rgba(56,225,255,.6),transparent);
+  }
+  @media(max-width:900px){
+    .hero{grid-template-columns:1fr;gap:22px}
+    .chip-wrap{order:-1;min-height:230px}
+    .chip{width:188px;height:214px;border-radius:16px}
+    .chip::before,.chip::after{left:10px;right:10px;height:12px}
+    .chip::before{top:-12px}
+    .chip::after{bottom:-12px}
+    .chip-name{font-size:60px}
+    .chip-brand{font-size:8px;letter-spacing:.42em}
+    .chip-sub{font-size:7.5px;letter-spacing:.18em;margin-top:7px}
+    .chip-notch{width:26px;height:8px;top:10px}
+    .chip-glow{inset:auto 20px 18px}
+  }
+
+  /* ---------- section shell ---------- */
+  .layout{display:grid;grid-template-columns:230px 1fr;gap:clamp(24px,4vw,56px);padding-bottom:100px}
+  .toc{
+    position:sticky;top:88px;align-self:start;
+    max-height:calc(100vh - 120px);overflow:auto;
+    padding-right:6px;scrollbar-width:thin;
+  }
+  .toc-title{
+    font:10px var(--mono);letter-spacing:.24em;color:var(--dim-2);
+    padding:0 12px 12px;text-transform:uppercase;
+  }
+  .toc a{
+    display:block;text-decoration:none;padding:7px 12px;
+    font-size:13px;color:var(--dim);line-height:1.4;
+    border-left:2px solid transparent;border-radius:0 7px 7px 0;
+    transition:.15s ease;
+  }
+  .toc a:hover{color:#fff;background:rgba(255,255,255,.04)}
+  .toc a.active{
+    color:var(--cyan);border-left-color:var(--cyan);
+    background:rgba(56,225,255,.075);
+  }
+  .toc a .n{font:10px var(--mono);color:var(--dim-2);margin-right:7px}
+  .toc a.active .n{color:var(--cyan)}
+  @media(max-width:1000px){
+    .layout{grid-template-columns:1fr}
+    .toc{display:none}
+  }
+
+  .content{min-width:0}
+  .sec{scroll-margin-top:92px;margin-bottom:64px}
+  .sec-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:10px}
+  .sec-num{font:11px var(--mono);letter-spacing:.14em;color:var(--accent,var(--cyan))}
+  .sec-title{margin:0;font-size:clamp(21px,2.6vw,28px);letter-spacing:-.02em;font-weight:650}
+  .sec-en{
+    font:10.5px var(--mono);letter-spacing:.2em;color:var(--dim-2);
+    text-transform:uppercase;
+  }
+  .sec-desc{
+    margin:0 0 22px;color:var(--dim);font-size:14px;line-height:1.8;
+    max-width:78ch;
+  }
+  .sec-desc code{
+    font:12px var(--mono);color:var(--accent,var(--cyan));
+    background:rgba(255,255,255,.045);border-radius:4px;padding:1px 5px;
+  }
+
+  /* ---------- registers ---------- */
+  .reg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-top:6px}
+  .reg-card{
+    background:linear-gradient(180deg,#12142a,#0d0e1c);
+    border:1px solid var(--line);border-radius:12px;padding:14px 16px;
+    position:relative;overflow:hidden;
+    transition:.2s ease;
+  }
+  .reg-card:hover{border-color:rgba(56,225,255,.4);transform:translateY(-2px)}
+  .reg-card::after{
+    content:"";position:absolute;right:-40px;top:-40px;width:90px;height:90px;
+    background:radial-gradient(circle,rgba(56,225,255,.12),transparent 70%);
+  }
+  .reg-name{font:10px var(--mono);letter-spacing:.18em;color:var(--dim-2);margin-bottom:9px}
+  .reg-split{display:flex;gap:6px;margin-bottom:8px}
+  .reg-split span{
+    flex:1;text-align:center;font:600 15px var(--mono);
+    padding:5px 0;border-radius:6px;
+    background:rgba(56,225,255,.07);color:var(--cyan);
+    border:1px solid rgba(56,225,255,.14);
+  }
+  .reg-split span.f{color:var(--amber);background:rgba(255,200,87,.07);border-color:rgba(255,200,87,.16)}
+  .reg-wide{
+    font:600 17px var(--mono);color:var(--cyan);letter-spacing:.06em;margin-bottom:8px;
+    padding:5px 9px;border-radius:6px;background:rgba(56,225,255,.07);
+    border:1px solid rgba(56,225,255,.14);display:inline-block;
+  }
+  .reg-card p{margin:0;font-size:12px;line-height:1.6;color:var(--dim)}
+  .reg-card.shadow{background:linear-gradient(180deg,#141226,#0c0b18);border-style:dashed;border-color:#2c2748}
+  .reg-card.shadow .reg-split span{color:var(--violet);background:rgba(167,139,250,.07);border-color:rgba(167,139,250,.16)}
+  .reg-card.shadow .reg-wide{color:var(--violet);background:rgba(167,139,250,.07);border-color:rgba(167,139,250,.16)}
+
+  /* ---------- flags ---------- */
+  .flag-list{display:grid;gap:8px;margin-top:6px}
+  .flag-row{
+    display:grid;grid-template-columns:64px 150px 1fr;gap:16px;align-items:center;
+    padding:12px 16px;border:1px solid var(--line);border-radius:10px;
+    background:linear-gradient(180deg,rgba(18,20,42,.7),rgba(11,12,24,.7));
+  }
+  .flag-bit{
+    font:700 16px var(--mono);color:var(--amber);
+    width:38px;height:38px;display:grid;place-items:center;border-radius:8px;
+    background:rgba(255,200,87,.07);border:1px solid rgba(255,200,87,.18);
+  }
+  .flag-name{font-size:13.5px;font-weight:600}
+  .flag-name span{display:block;font:10px var(--mono);color:var(--dim-2);letter-spacing:.12em;font-weight:400;margin-top:2px}
+  .flag-desc{font-size:13px;color:var(--dim);line-height:1.65}
+  .flag-table-note{
+    margin-top:14px;font-size:12.5px;color:var(--dim-2);line-height:1.7;
+    border-left:2px solid var(--line-2);padding-left:14px;
+  }
+
+  /* ---------- timing ---------- */
+  .cycle-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:6px 0 26px}
+  .cycle-card{
+    background:linear-gradient(180deg,#12142a,#0c0d1a);
+    border:1px solid var(--line);border-radius:12px;padding:15px 16px;
+  }
+  .cycle-card b{display:block;font:600 24px var(--mono);letter-spacing:-.02em;color:var(--cyan)}
+  .cycle-card .k{font:11px var(--mono);color:var(--dim);margin-top:4px;letter-spacing:.06em}
+  .cycle-card .d{font-size:12px;color:var(--dim-2);margin-top:8px;line-height:1.55}
+
+  .timing-examples{display:grid;gap:10px;margin:10px 0 26px}
+  .cyc{
+    border:1px solid var(--line);border-radius:11px;
+    background:rgba(13,14,26,.75);padding:12px 15px 14px;
+  }
+  .cyc-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px}
+  .cyc-top code{font:600 13.5px var(--mono);color:#eafcff}
+  .cyc-top span{font:11px var(--mono);color:var(--dim)}
+  .cyc-bar{display:flex;gap:3px;height:30px;border-radius:6px;overflow:hidden}
+  .seg{
+    display:flex;align-items:center;justify-content:center;
+    font:9.5px var(--mono);color:#061018;white-space:nowrap;overflow:hidden;
+    padding:0 4px;letter-spacing:.01em;
+  }
+  .s-fetch{background:linear-gradient(180deg,#5fe9ff,#2bb8d6);color:#04161c}
+  .s-read{background:linear-gradient(180deg,#6ea8ff,#3d75d6);color:#04101f}
+  .s-write{background:linear-gradient(180deg,#ffd479,#e0a12f);color:#1d1203}
+  .s-int{background:linear-gradient(180deg,#c4b5fd,#8b6cf0);color:#100a22}
+  .s-io{background:linear-gradient(180deg,#7dffbc,#2fcf85);color:#03190f}
+
+  .calc{
+    border:1px solid var(--line-2);border-radius:12px;padding:16px 18px;
+    background:linear-gradient(180deg,rgba(56,225,255,.055),rgba(13,14,26,.6));
+    display:flex;flex-wrap:wrap;align-items:center;gap:18px;
+  }
+  .calc label{font-size:13px;color:var(--dim)}
+  .calc input{
+    width:92px;background:#0b0c18;border:1px solid var(--line-2);border-radius:8px;
+    color:var(--cyan);font:14px var(--mono);padding:8px 10px;outline:0;
+  }
+  .calc input:focus{border-color:rgba(56,225,255,.6)}
+  .calc .out{font:12.5px var(--mono);color:var(--dim);line-height:1.9}
+  .calc .out b{color:var(--amber);font-weight:600}
+
+  /* ---------- instruction sections ---------- */
+  .inst-sec{scroll-margin-top:92px;margin:0 0 54px}
+  .inst-head{border-left:2px solid var(--accent);padding-left:16px;margin-bottom:14px}
+  .inst-head .sec-desc{margin-bottom:0;font-size:13.5px}
+  .hint{
+    display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--dim-2);
+    margin:0 0 9px 2px;font-family:var(--mono);
+  }
+  .hint .dot{width:5px;height:5px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent)}
+  .table-wrap{
+    border:1px solid var(--line);border-radius:13px;overflow:hidden;
+    background:linear-gradient(180deg,rgba(19,21,40,.9),rgba(11,12,22,.9));
+    box-shadow:0 18px 40px -28px rgba(0,0,0,.9);
+  }
+  .scroll-x{overflow-x:auto;scrollbar-width:thin}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:760px}
+  thead th{
+    text-align:left;padding:11px 14px;
+    font:10px var(--mono);letter-spacing:.14em;color:var(--dim-2);
+    text-transform:uppercase;background:rgba(255,255,255,.025);
+    border-bottom:1px solid var(--line);white-space:nowrap;
+  }
+  tbody td{
+    padding:10px 14px;border-top:1px solid rgba(30,32,53,.6);
+    vertical-align:top;
+  }
+  tbody tr{cursor:pointer;transition:background .13s ease}
+  tbody tr:hover{background:rgba(56,225,255,.045)}
+  tbody tr:hover .mn{text-shadow:0 0 14px currentColor}
+  td.mn{
+    font:600 13.5px var(--mono);color:var(--accent);white-space:nowrap;
+  }
+  td.op{font:11.5px var(--mono);color:var(--dim);white-space:nowrap}
+  td.num{
+    font:12px var(--mono);color:#c9cdea;text-align:center;white-space:nowrap;
+  }
+  td.num.t{color:var(--amber)}
+  td.fl{font:10.5px var(--mono);color:var(--dim);white-space:normal;min-width:120px;line-height:1.55}
+  td.desc{
+    color:#a6abc9;font-size:12.5px;line-height:1.65;min-width:260px;
+    white-space:normal;
+  }
+  tr.hidden{display:none}
+  .sec.hidden,.inst-sec.hidden{display:none}
+
+  /* ---------- mobile navigation strip ---------- */
+  .mobile-nav{display:none}
+  @media(max-width:1000px){
+    .mobile-nav{
+      display:flex;gap:8px;overflow-x:auto;
+      position:sticky;top:64px;z-index:90;
+      padding:10px clamp(16px,3vw,36px);
+      background:rgba(7,7,13,.88);
+      border-bottom:1px solid rgba(42,45,74,.5);
+      backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+      scrollbar-width:none;
+    }
+    .mobile-nav::-webkit-scrollbar{display:none}
+    .mobile-nav a{
+      flex:0 0 auto;text-decoration:none;
+      font:11px var(--mono);color:var(--dim);
+      border:1px solid var(--line-2);border-radius:999px;
+      padding:6px 11px;background:rgba(18,20,42,.6);
+      transition:.15s ease;
+    }
+    .mobile-nav a:hover{color:#fff;border-color:var(--dim-2)}
+    .mobile-nav a.active{color:#041018;background:var(--cyan);border-color:var(--cyan)}
+    .sec,.inst-sec{scroll-margin-top:132px}
+  }
+
+  /* ---------- table -> cards on phones ---------- */
+  @media(max-width:760px){
+    .table-wrap{border-radius:12px}
+    .scroll-x{overflow:visible}
+    table{min-width:0;display:block;font-size:13px}
+    thead{display:none}
+    tbody{display:block}
+    tbody tr{
+      display:block;padding:14px 15px 16px;
+      border-top:1px solid rgba(30,32,53,.8);
+    }
+    tbody tr:first-child{border-top:0}
+    tbody tr:hover{background:transparent}
+    tbody tr:active{background:rgba(56,225,255,.05)}
+    tbody td{display:inline;padding:0;border:0}
+    td.mn{display:block;font-size:15px;margin-bottom:4px}
+    td.op{display:block;font-size:11px;margin-bottom:9px;overflow-wrap:anywhere}
+    td.num,td.fl{
+      display:inline-block;margin:0 12px 6px 0;
+      font-size:10.5px;text-align:left;color:var(--dim);min-width:0;
+    }
+    td.num::before,td.fl::before{color:var(--dim-2)}
+    td:nth-child(3)::before{content:"字节 "}
+    td:nth-child(4)::before{content:"T "}
+    td:nth-child(5)::before{content:"M "}
+    td:nth-child(6)::before{content:"标志 "}
+    td.desc{
+      display:block;margin-top:8px;min-width:0;max-width:none;
+      font-size:12.5px;line-height:1.7;color:#9aa0c0;
+    }
+    tr.hidden{display:none!important}
+    .hint{font-size:10.5px;line-height:1.5}
+    .inst-head{padding-left:12px}
+    .sec-head{gap:10px}
+    .sec-title{font-size:20px}
+    .sec-en{font-size:9.5px}
+  }
+  @media(max-width:560px){
+    .hero{padding-top:30px;gap:18px}
+    .stats{gap:16px 26px;margin-top:26px}
+    .stat b{font-size:18px}
+    .quick a{font-size:11px;padding:6px 11px}
+    .modal-card{max-height:90vh;padding:22px 18px}
+    .meta-grid{grid-template-columns:repeat(2,1fr)}
+    .flag-row{grid-template-columns:44px 1fr;gap:10px 12px}
+    .flag-bit{width:32px;height:32px;font-size:14px}
+    .flag-desc{grid-column:1/-1}
+    .calc{gap:12px}
+    .calc .out{width:100%}
+  }
+  @media(max-width:400px){
+    .search kbd{display:none}
+  }
+  @media(max-width:360px){
+    .brand-text b{display:none}
+  }
+
+  .empty-state{
+    display:none;padding:36px;text-align:center;color:var(--dim);
+    border:1px dashed var(--line-2);border-radius:12px;
+  }
+  .empty-state.show{display:block}
+
+  /* ---------- modal ---------- */
+  .modal{
+    position:fixed;inset:0;z-index:200;display:grid;place-items:center;
+    padding:20px;opacity:0;pointer-events:none;transition:opacity .2s ease;
+  }
+  .modal.open{opacity:1;pointer-events:auto}
+  .modal-back{
+    position:absolute;inset:0;background:rgba(4,5,10,.72);
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  }
+  .modal-card{
+    position:relative;width:min(660px,100%);max-height:86vh;overflow:auto;
+    background:linear-gradient(180deg,#14162a,#0b0c18);
+    border:1px solid var(--line-2);border-radius:16px;
+    padding:28px 30px 26px;
+    box-shadow:0 40px 100px -20px rgba(0,0,0,.9), 0 0 70px rgba(56,225,255,.07);
+    transform:translateY(14px) scale(.985);transition:transform .22s cubic-bezier(.2,.8,.3,1);
+  }
+  .modal.open .modal-card{transform:none}
+  .modal-x{
+    position:absolute;top:14px;right:16px;width:30px;height:30px;border-radius:8px;
+    background:rgba(255,255,255,.04);border:1px solid var(--line);
+    color:var(--dim);font:14px var(--mono);cursor:pointer;
+  }
+  .modal-x:hover{color:#fff;border-color:var(--line-2)}
+  .modal-mn{font:700 clamp(22px,4vw,30px) var(--mono);color:var(--cyan);letter-spacing:-.01em}
+  .modal-cat{font:10.5px var(--mono);letter-spacing:.18em;color:var(--dim-2);margin-top:6px;text-transform:uppercase}
+  .meta-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:20px 0 18px}
+  .meta-grid div{
+    background:rgba(255,255,255,.03);border:1px solid var(--line);
+    border-radius:9px;padding:9px 11px;
+  }
+  .meta-grid .k{font:9.5px var(--mono);letter-spacing:.12em;color:var(--dim-2)}
+  .meta-grid .v{font:600 13px var(--mono);color:#dfe4ff;margin-top:4px;word-break:break-all}
+  .modal p.desc{font-size:14px;line-height:1.85;color:#b9bedc;margin:0 0 18px}
+  .modal .ex{
+    border:1px solid var(--line);border-radius:10px;background:#090a14;
+    padding:12px 15px;margin-bottom:16px;
+  }
+  .modal .ex .k{font:9.5px var(--mono);letter-spacing:.14em;color:var(--dim-2);margin-bottom:7px}
+  .modal .ex code{font:13px var(--mono);color:var(--green);white-space:pre-wrap;word-break:break-word}
+  .modal .flags-line{font:12px var(--mono);color:var(--dim);line-height:1.7}
+  .modal .flags-line b{color:var(--amber);font-weight:500}
+  @media(max-width:560px){
+    .meta-grid{grid-template-columns:repeat(2,1fr)}
+    .modal-card{padding:24px 20px}
+  }
+
+  /* ---------- misc ---------- */
+  .footer{
+    border-top:1px solid var(--line);padding:28px 0 44px;
+    color:var(--dim-2);font-size:12px;line-height:1.8;
+  }
+  .footer code{font-family:var(--mono);color:var(--dim)}
+  .reveal{opacity:0;transform:translateY(16px)}
+  .reveal.in{opacity:1;transform:none;transition:opacity .5s ease,transform .5s cubic-bezier(.2,.8,.3,1)}
+  @media(prefers-reduced-motion:reduce){
+    .reveal{opacity:1;transform:none}
+    html{scroll-behavior:auto}
+    *{transition:none!important;animation:none!important}
+  }
+  kbd{
+    font:10px var(--mono);border:1px solid var(--line-2);border-bottom-width:2px;
+    border-radius:4px;padding:1px 5px;color:var(--dim);background:#15172c;
+  }
+</style>
+</head>
+<body>
+<div id="progress"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">Z80</div>
+    <div class="brand-text">
+      <b>Z80 指令集</b>
+      <span>INSTRUCTION SET · TIMING</span>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <div class="count-pill" id="countPill">— 条指令</div>
+  <div class="search">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path>
+    </svg>
+    <input id="search" type="search" placeholder="搜索指令、操作码、说明…" autocomplete="off" spellcheck="false">
+    <kbd>/</kbd>
+  </div>
+</header>
+<nav class="mobile-nav" id="mobileNav" aria-label="章节导航"></nav>
+
+<div class="wrap">
+  <section class="hero">
+    <div>
+      <div class="eyebrow">Zilog Z80 · 1976 · 8-bit</div>
+      <h1>一台 8 位 CPU 的<br><span class="grad">完整指令手册</span></h1>
+      <p class="lede">
+        从 <code>LD A,B</code> 到 <code>LDIR</code>：每条指令做什么、占几个字节、花几个 T 状态、影响哪些标志。
+        全部按功能分组，可搜索、可点击展开。附机器周期分解与主频换算。
+      </p>
+      <div class="quick">
+        <a href="#registers">寄存器</a>
+        <a href="#timing">时序</a>
+        <a href="#load8">数据传送</a>
+        <a href="#alu8">算术逻辑</a>
+        <a href="#rotate">移位</a>
+        <a href="#jump">程序控制</a>
+        <a href="#io">I/O</a>
+      </div>
+      <div class="stats">
+        <div class="stat"><b>158</b><span>文档化指令</span></div>
+        <div class="stat"><b>4 MHz</b><span>典型主频</span></div>
+        <div class="stat"><b>64 KB</b><span>寻址空间</span></div>
+        <div class="stat"><b>3.58–8 MHz</b><span>常见频率范围</span></div>
+      </div>
+    </div>
+    <div class="chip-wrap">
+      <div class="chip">
+        <div class="chip-notch"></div>
+        <div class="chip-brand">ZILOG</div>
+        <div class="chip-name">Z80</div>
+        <div class="chip-sub">8-BIT CPU · NMOS · 1976</div>
+        <div class="chip-glow"></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="layout">
+    <aside class="toc">
+      <div class="toc-title">目录</div>
+      <nav id="tocNav">
+        <a href="#registers"><span class="n">01</span>寄存器组</a>
+        <a href="#flags"><span class="n">02</span>标志寄存器</a>
+        <a href="#timing"><span class="n">03</span>时序与机器周期</a>
+      </nav>
+    </aside>
+
+    <div class="content">
+      <section class="sec" id="registers" data-spy style="--accent:#38e1ff">
+        <div class="sec-head">
+          <span class="sec-num">01</span>
+          <h2 class="sec-title">寄存器组</h2>
+          <span class="sec-en">Registers</span>
+        </div>
+        <p class="sec-desc">
+          8 个 8 位通用寄存器可按字节访问，也可两两组成 16 位寄存器对。
+          <code>HL</code> 是默认的内存指针，<code>IX/IY</code> 是带偏移的变址指针；另有影子寄存器组供快速上下文切换。
+        </p>
+        <div class="reg-grid">
+          <div class="reg-card">
+            <div class="reg-name">ACCUMULATOR · 累加器</div>
+            <div class="reg-split"><span>A</span><span class="f">F</span></div>
+            <p>A 为算术逻辑主操作数，F 为标志寄存器。合称 AF，可压栈保存。</p>
+          </div>
+          <div class="reg-card">
+            <div class="reg-name">PAIR · 通用寄存器对</div>
+            <div class="reg-split"><span>B</span><span>C</span></div>
+            <p>通用 8 位寄存器；BC 常作 16 位计数器或 I/O 端口地址。C 可单独作端口号。</p>
+          </div>
+          <div class="reg-card">
+            <div class="reg-name">PAIR · 通用寄存器对</div>
+            <div class="reg-split"><span>D</span><span>E</span></div>
+            <p>通用 8 位寄存器；DE 常作内存指针或第二累加器。</p>
+          </div>
+          <div class="reg-card">
+            <div class="reg-name">PAIR · 内存指针</div>
+            <div class="reg-split"><span>H</span><span>L</span></div>
+            <p>HL 是默认内存指针，<code>(HL)</code> 寻址最省字节。H、L 也可单独使用。</p>
+          </div>
+          <div class="reg-card">
+            <div class="reg-name">INDEX · 变址寄存器</div>
+            <div class="reg-wide">IX</div>
+            <p>以 IX+d 形式寻址，d 为有符号 8 位偏移。操作需 DD 前缀，慢 4–12 T。</p>
+          </div>
+          <div class="reg-card">
+            <div class="reg-name">INDEX · 变址寄存器</div>
+            <div class="reg-wide">IY</div>
+            <p>与 IX 对应，需 FD 前缀。适合结构体字段或栈帧访问。</p>
+          </div>
+          <div class="reg-card">
+            <div class="reg-name">STACK POINTER · 栈指针</div>
+            <div class="reg-wide">SP</div>
+            <p>指向栈顶。压栈先减 1 再写，出栈先读再加 1，栈向下生长。</p>
+          </div>
+          <div class="reg-card">
+            <div class="reg-name">PROGRAM COUNTER · 程序计数器</div>
+            <div class="reg-wide">PC</div>
+            <p>指向下一条要取指的地址。跳转、调用、中断都会改写它。</p>
+          </div>
+          <div class="reg-card">
+            <div class="reg-name">INTERRUPT VECTOR · 中断向量</div>
+            <div class="reg-wide">I</div>
+            <p>IM 2 模式下与中断数据总线组成向量表地址的高 8 位。</p>
+          </div>
+          <div class="reg-card">
+            <div class="reg-name">REFRESH · 刷新寄存器</div>
+            <div class="reg-wide">R</div>
+            <p>低 7 位在每个 M1 取指后递增，供动态 RAM 刷新；可读可写，通常只读。</p>
+          </div>
+          <div class="reg-card shadow">
+            <div class="reg-name">SHADOW · 影子寄存器</div>
+            <div class="reg-split"><span>AF′</span><span>BC′</span></div>
+            <p>由 <code>EX AF,AF′</code> 与 <code>EXX</code> 与主寄存器组交换，切换不花额外内存周期。</p>
+          </div>
+          <div class="reg-card shadow">
+            <div class="reg-name">SHADOW · 影子寄存器</div>
+            <div class="reg-split"><span>DE′</span><span>HL′</span></div>
+            <p>中断处理中快速保存现场：一组 EX/EXX 即可换入换出全部通用寄存器。</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="sec" id="flags" data-spy style="--accent:#ffc857">
+        <div class="sec-head">
+          <span class="sec-num">02</span>
+          <h2 class="sec-title">标志寄存器 F</h2>
+          <span class="sec-en">Flags</span>
+        </div>
+        <p class="sec-desc">
+          6 个有效标志位，位 5 与位 3 未使用。不同指令更新不同子集：逻辑指令把 P/V 当奇偶标志，算术指令把它当溢出标志。
+        </p>
+        <div class="flag-list">
+          <div class="flag-row">
+            <div class="flag-bit">S</div>
+            <div class="flag-name">符号<span>BIT 7 · SIGN</span></div>
+            <div class="flag-desc">结果最高位（位 7）的副本。1 表示结果为负（按补码解释）。</div>
+          </div>
+          <div class="flag-row">
+            <div class="flag-bit">Z</div>
+            <div class="flag-name">零<span>BIT 6 · ZERO</span></div>
+            <div class="flag-desc">结果全 0 时置 1。<code>CP</code> 用它判断两数相等，循环用 <code>DEC</code> 后的 Z 判断结束。</div>
+          </div>
+          <div class="flag-row">
+            <div class="flag-bit">H</div>
+            <div class="flag-name">半进位<span>BIT 4 · HALF CARRY</span></div>
+            <div class="flag-desc">位 3 向位 4 的进位/借位。仅供 <code>DAA</code> 做 BCD 调整使用。</div>
+          </div>
+          <div class="flag-row">
+            <div class="flag-bit">P/V</div>
+            <div class="flag-name">奇偶 / 溢出<span>BIT 2 · PARITY / OVERFLOW</span></div>
+            <div class="flag-desc">逻辑与移位指令中表示结果的奇偶性（偶数个 1 则置 1）；算术指令中表示有符号溢出。</div>
+          </div>
+          <div class="flag-row">
+            <div class="flag-bit">N</div>
+            <div class="flag-name">加/减<span>BIT 1 · ADD/SUBTRACT</span></div>
+            <div class="flag-desc">上一条算术操作为减法时置 1，加法时为 0。<code>DAA</code> 据此决定加还是减调整量。</div>
+          </div>
+          <div class="flag-row">
+            <div class="flag-bit">C</div>
+            <div class="flag-name">进位<span>BIT 0 · CARRY</span></div>
+            <div class="flag-desc">位 7 的进位/借位，也是移位指令移出的位。多字节加减法靠它串联。</div>
+          </div>
+        </div>
+        <p class="flag-table-note">
+          F 寄存器位上：S=7，Z=6，F5=5（未用），H=4，F3=3（未用），P/V=2，N=1，C=0。
+          <code>PUSH AF</code> / <code>POP AF</code> 可整体保存与恢复标志；<code>EX AF,AF′</code> 可与影子组交换。
+        </p>
+      </section>
+
+      <section class="sec" id="timing" data-spy style="--accent:#5cffa8">
+        <div class="sec-head">
+          <span class="sec-num">03</span>
+          <h2 class="sec-title">时序、T 状态与机器周期</h2>
+          <span class="sec-en">Timing · T-States · M-Cycles</span>
+        </div>
+        <p class="sec-desc">
+          指令执行时间以 <code>T 状态</code> 计，一个 T 状态就是一个时钟周期。若主频 4 MHz，则 1 T = 250 ns。
+          每个指令由若干 <code>M 周期</code>（机器周期 / 总线周期）组成，每个 M 周期完成一次明确的访问动作。
+        </p>
+
+        <div class="cycle-cards">
+          <div class="cycle-card">
+            <b>4T</b>
+            <div class="k">M1 · 取操作码</div>
+            <div class="d">输出 PC，读取操作码，同时刷新 DRAM。每个指令至少一个 M1。</div>
+          </div>
+          <div class="cycle-card">
+            <b>3T</b>
+            <div class="k">存储器读</div>
+            <div class="d">读立即数、内存操作数或栈上的返回地址。</div>
+          </div>
+          <div class="cycle-card">
+            <b>3T</b>
+            <div class="k">存储器写</div>
+            <div class="d">写内存操作数，或压栈保存数据。</div>
+          </div>
+          <div class="cycle-card">
+            <b>4T</b>
+            <div class="k">I/O 读 / 写</div>
+            <div class="d">端口地址放在地址总线低 16 位，比内存访问多 1 T。</div>
+          </div>
+          <div class="cycle-card">
+            <b>13T</b>
+            <div class="k">中断响应 · IM 0/1</div>
+            <div class="d">含 7T 中断应答周期与压栈。IM 2 响应为 19T。</div>
+          </div>
+        </div>
+
+        <div class="timing-examples">
+          <div class="cyc">
+            <div class="cyc-top"><code>LD A,B</code><span>4 T · 1 M</span></div>
+            <div class="cyc-bar"><div class="seg s-fetch" style="flex:4">M1 取指 4T</div></div>
+          </div>
+          <div class="cyc">
+            <div class="cyc-top"><code>LD A,(HL)</code><span>7 T · 2 M</span></div>
+            <div class="cyc-bar">
+              <div class="seg s-fetch" style="flex:4">M1 取指 4T</div>
+              <div class="seg s-read" style="flex:3">M2 读 (HL) 3T</div>
+            </div>
+          </div>
+          <div class="cyc">
+            <div class="cyc-top"><code>LD (HL),n</code><span>10 T · 3 M</span></div>
+            <div class="cyc-bar">
+              <div class="seg s-fetch" style="flex:4">M1 取指 4T</div>
+              <div class="seg s-read" style="flex:3">M2 读立即数 3T</div>
+              <div class="seg s-write" style="flex:3">M3 写内存 3T</div>
+            </div>
+          </div>
+          <div class="cyc">
+            <div class="cyc-top"><code>CALL nn</code><span>17 T · 5 M</span></div>
+            <div class="cyc-bar">
+              <div class="seg s-fetch" style="flex:4">M1 4T</div>
+              <div class="seg s-read" style="flex:3">读低 3T</div>
+              <div class="seg s-read" style="flex:3">读高 3T</div>
+              <div class="seg s-int" style="flex:1">内部 1T</div>
+              <div class="seg s-write" style="flex:3">压栈 3T</div>
+              <div class="seg s-write" style="flex:3">压栈 3T</div>
+            </div>
+          </div>
+          <div class="cyc">
+            <div class="cyc-top"><code>DJNZ e</code>（跳转）<span>13 T · 3 M</span></div>
+            <div class="cyc-bar">
+              <div class="seg s-fetch" style="flex:5">M1 取指并减 B 5T</div>
+              <div class="seg s-read" style="flex:3">M2 读位移 3T</div>
+              <div class="seg s-int" style="flex:5">M3 内部 5T</div>
+            </div>
+          </div>
+          <div class="cyc">
+            <div class="cyc-top"><code>IN A,(n)</code><span>11 T · 3 M</span></div>
+            <div class="cyc-bar">
+              <div class="seg s-fetch" style="flex:4">M1 4T</div>
+              <div class="seg s-read" style="flex:3">读端口号 3T</div>
+              <div class="seg s-io" style="flex:4">I/O 读 4T</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="calc">
+          <label for="mhz">主频</label>
+          <input id="mhz" type="number" min="0.1" step="0.01" value="4">
+          <span style="font:12px var(--mono);color:var(--dim-2)">MHz</span>
+          <div class="out">
+            1 T = <b id="nsPerT">250.0</b> ns&nbsp;&nbsp;·&nbsp;&nbsp;
+            4 T 指令 = <b id="ns4T">1000.0</b> ns&nbsp;&nbsp;·&nbsp;&nbsp;
+            1 秒可执行约 <b id="ips">1,000,000</b> 条 4T 指令
+          </div>
+        </div>
+        <p class="flag-table-note" style="margin-top:18px">
+          条件跳转/调用/返回未成立时通常少一个 M 周期：<code>JP cc</code> 不成立 7T、<code>CALL cc</code> 不成立 10T、<code>RET cc</code> 不成立 5T、<code>JR cc</code> 不成立 7T。
+          块指令重复执行时为 21T，最后一次不重复时为 16T。表中 “21 / 16” 即此含义。
+        </p>
+      </section>
+
+      <div id="instructions"></div>
+      <div class="empty-state" id="emptyState">没有匹配的指令。换个关键词试试，例如 <code>LDIR</code>、<code>BIT</code>、<code>IN</code>。</div>
+
+      <footer class="footer">
+        <div>参考 Zilog Z80 CPU User Manual 与 Z80 指令时序表。NMOS Z80 时序；CMOS 型号在个别指令上略有不同。</div>
+        <div>T 状态随主频缩放，M 周期数不变。表中 “T 状态” 为指令总时钟数，“M 周期” 为总线周期数。</div>
+        <div style="margin-top:8px;color:#4a4e6e">单文件离线页面 · 无需网络 · 直接浏览器打开</div>
+      </footer>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-hidden="true">
+  <div class="modal-back" data-close></div>
+  <div class="modal-card">
+    <button class="modal-x" data-close aria-label="关闭">✕</button>
+    <div class="modal-mn" id="mMn">—</div>
+    <div class="modal-cat" id="mCat">—</div>
+    <div class="meta-grid">
+      <div><div class="k">操作码</div><div class="v" id="mOp">—</div></div>
+      <div><div class="k">字节</div><div class="v" id="mBytes">—</div></div>
+      <div><div class="k">T 状态</div><div class="v" id="mT">—</div></div>
+      <div><div class="k">M 周期</div><div class="v" id="mM">—</div></div>
+    </div>
+    <p class="desc" id="mDesc">—</p>
+    <div class="ex" id="mExWrap">
+      <div class="k">示例</div>
+      <code id="mEx">—</code>
+    </div>
+    <div class="flags-line">影响标志：<b id="mFlags">—</b></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ============================================================
+     DATA
+     ============================================================ */
+  const hex = n => "0x" + n.toString(16).toUpperCase().padStart(2, "0");
+
+  function aluGroup(op, base, imm, flags, desc){
+    const hl = hex(base + 6);
+    return [
+      {m:op + " A,r",  op:hex(base) + "–" + hex(base + 7), b:1, t:"4",  mc:1, f:flags,
+       d:desc + " 操作数为任意 8 位寄存器 r（A/B/C/D/E/H/L）。", ex:op + " A,B"},
+      {m:op + " A,n",  op:hex(imm) + " n", b:2, t:"7", mc:2, f:flags,
+       d:desc + " 操作数为紧跟操作码的立即数 n。", ex:op + " A,3Fh"},
+      {m:op + " A,(HL)", op:hl, b:1, t:"7", mc:2, f:flags,
+       d:desc + " 操作数取自 HL 指向的存储单元。", ex:op + " A,(HL)"},
+      {m:op + " A,(IX+d)", op:"DD " + hl + " d", b:3, t:"19", mc:5, f:flags,
+       d:desc + " 操作数取自 IX+d 指向的存储单元，d 为有符号 8 位偏移。", ex:op + " A,(IX+2)"}
+    ];
+  }
+
+  const alu8Rows = [].concat(
+    aluGroup("ADD", 0x80, 0xC6, "S Z H V C（N=0）",
+      "把操作数与 A 相加，结果写回 A。"),
+    aluGroup("ADC", 0x88, 0xCE, "S Z H V C（N=0）",
+      "带进位加法：A + 操作数 + C，结果写回 A。用于多字节加法串联。"),
+    aluGroup("SUB", 0x90, 0xD6, "S Z H V C（N=1）",
+      "从 A 减去操作数，结果写回 A。"),
+    aluGroup("SBC", 0x98, 0xDE, "S Z H V C（N=1）",
+      "带借位减法：A − 操作数 − C，结果写回 A。用于多字节减法串联。"),
+    aluGroup("AND", 0xA0, 0xE6, "S Z H=1 P/V=奇偶 C=0（N=0）",
+      "A 与操作数按位与，结果写回 A。常用于屏蔽位。"),
+    aluGroup("XOR", 0xA8, 0xEE, "S Z H=0 P/V=奇偶 C=0（N=0）",
+      "A 与操作数按位异或，结果写回 A。XOR A 是清零 A 的惯用写法。"),
+    aluGroup("OR", 0xB0, 0xF6, "S Z H=0 P/V=奇偶 C=0（N=0）",
+      "A 与操作数按位或，结果写回 A。常用于置位。"),
+    aluGroup("CP", 0xB8, 0xFE, "S Z H V C（N=1，结果丢弃）",
+      "用 A 减操作数，只更新标志，不回写结果。用于比较大小。")
+  );
+  alu8Rows.push(
+    {m:"INC r", op:"04 + 8r", b:1, t:"4", mc:1, f:"S Z H V（N=0，C 不变）",
+     d:"8 位寄存器加 1。C 标志不受影响，方便在带进位运算中循环计数。", ex:"INC B"},
+    {m:"INC (HL)", op:"34", b:1, t:"11", mc:3, f:"S Z H V（N=0，C 不变）",
+     d:"HL 指向的内存字节加 1。需一次读和一次写，共 11 T。", ex:"INC (HL)"},
+    {m:"INC (IX+d)", op:"DD 34 d", b:3, t:"23", mc:6, f:"S Z H V（N=0，C 不变）",
+     d:"IX+d 指向的内存字节加 1。变址寻址需要额外地址计算周期。", ex:"INC (IX+1)"},
+    {m:"DEC r", op:"05 + 8r", b:1, t:"4", mc:1, f:"S Z H V（N=1，C 不变）",
+     d:"8 位寄存器减 1。C 标志不受影响。", ex:"DEC C"},
+    {m:"DEC (HL)", op:"35", b:1, t:"11", mc:3, f:"S Z H V（N=1，C 不变）",
+     d:"HL 指向的内存字节减 1。", ex:"DEC (HL)"},
+    {m:"DEC (IX+d)", op:"DD 35 d", b:3, t:"23", mc:6, f:"S Z H V（N=1，C 不变）",
+     d:"IX+d 指向的内存字节减 1。", ex:"DEC (IX+1)"}
+  );
+
+  const rotDefs = [
+    {op:"RLC", base:0x00, d:"循环左移：最高位移入 C，同时移入最低位。"},
+    {op:"RRC", base:0x08, d:"循环右移：最低位移入 C，同时移入最高位。"},
+    {op:"RL",  base:0x10, d:"经进位左移：旧 C 移入最低位，最高位移入 C。"},
+    {op:"RR",  base:0x18, d:"经进位右移：旧 C 移入最高位，最低位移入 C。"},
+    {op:"SLA", base:0x20, d:"算术左移：最低位补 0，最高位移入 C。等效乘 2。"},
+    {op:"SRA", base:0x28, d:"算术右移：最高位保持不变（保留符号），最低位移入 C。"},
+    {op:"SRL", base:0x38, d:"逻辑右移：最高位补 0，最低位移入 C。"}
+  ];
+  const rotRows = [];
+  rotDefs.forEach(function(def){
+    const f = "S Z H=0 P/V=奇偶 N=0 C";
+    rotRows.push(
+      {m:def.op + " r", op:"CB " + hex(def.base) + "+8r", b:2, t:"8", mc:2, f:f,
+       d:def.d + " 操作数为 8 位寄存器。", ex:def.op + " A"},
+      {m:def.op + " (HL)", op:"CB " + hex(def.base + 6), b:2, t:"15", mc:4, f:f,
+       d:def.d + " 操作数为 (HL) 指向的内存字节。", ex:def.op + " (HL)"},
+      {m:def.op + " (IX+d)", op:"DD CB d " + hex(def.base + 6), b:4, t:"23", mc:6, f:f,
+       d:def.d + " 操作数为 (IX+d)。注意前缀顺序为 DD CB d opcode。", ex:def.op + " (IX+3)"}
+    );
+  });
+  rotRows.push(
+    {m:"RLCA", op:"07", b:1, t:"4", mc:1, f:"H=0 N=0 C；S Z P/V 不变",
+     d:"A 循环左移一位，位 7 同时进入 C 和位 0。比 CB 版本更短更快，但只作用于 A。", ex:"RLCA"},
+    {m:"RRCA", op:"0F", b:1, t:"4", mc:1, f:"H=0 N=0 C；S Z P/V 不变",
+     d:"A 循环右移一位，位 0 同时进入 C 和位 7。", ex:"RRCA"},
+    {m:"RLA", op:"17", b:1, t:"4", mc:1, f:"H=0 N=0 C；S Z P/V 不变",
+     d:"A 经进位循环左移：旧 C 进入位 0，位 7 进入 C。", ex:"RLA"},
+    {m:"RRA", op:"1F", b:1, t:"4", mc:1, f:"H=0 N=0 C；S Z P/V 不变",
+     d:"A 经进位循环右移：旧 C 进入位 7，位 0 进入 C。", ex:"RRA"},
+    {m:"SLL r / (HL) / (IX+d)", op:"CB 30+8r 等", b:"2–4", t:"8 / 15 / 23", mc:"2 / 4 / 6",
+     f:"S Z H=0 P/V=奇偶 N=0 C",
+     d:"未公开指令：左移一位且最低位补 1（不是 0）。时序与 SLA 完全相同，部分汇编器写作 SLI。", ex:"SLL B"}
+  );
+
+  const bitRows = [];
+  [
+    {op:"BIT", base:0x40, f:"Z（位为 0 则置 1）H=1 N=0",
+     d:"测试操作数的第 b 位（b=0–7），将该位取反后写入 Z。不修改操作数。"},
+    {op:"RES", base:0x80, f:"无",
+     d:"把操作数的第 b 位清 0，其余位不变，不影响任何标志。"},
+    {op:"SET", base:0xC0, f:"无",
+     d:"把操作数的第 b 位置 1，其余位不变，不影响任何标志。"}
+  ].forEach(function(def){
+    const isBit = def.op === "BIT";
+    bitRows.push(
+      {m:def.op + " b,r", op:"CB " + hex(def.base) + "+8b+r", b:2, t:isBit?"8":"8", mc:2, f:def.f,
+       d:def.d + " 操作数为 8 位寄存器。", ex:def.op + " 3,A"},
+      {m:def.op + " b,(HL)", op:"CB " + hex(def.base) + "+8b+6", b:2, t:isBit?"12":"15", mc:isBit?3:4, f:def.f,
+       d:def.d + " 操作数为 (HL) 指向的内存字节。", ex:def.op + " 3,(HL)"},
+      {m:def.op + " b,(IX+d)", op:"DD CB d " + hex(def.base) + "+8b+6", b:4, t:isBit?"20":"23", mc:isBit?5:6, f:def.f,
+       d:def.d + " 操作数为 (IX+d)。若低 3 位不为 6，还会把结果同时写入对应寄存器（未公开行为）。", ex:def.op + " 3,(IX+2)"}
+    );
+  });
+
+  const rstRows = [];
+  for(let v = 0; v < 8; v++){
+    const addr = (v * 8);
+    rstRows.push({
+      m:"RST " + hex(addr).replace("0x","") + "h",
+      op:hex(0xC7 + v * 8), b:1, t:"11", mc:3, f:"无",
+      d:"单字节调用固定地址 " + hex(addr) + "。把 PC 压栈后跳到该地址；常用于中断向量与系统调用，比 CALL 短 2 字节、快 6 T。",
+      ex:"RST 38h"
+    });
+  }
+
+  const sections = [
+    {
+      id:"load8", title:"8 位数据传送", en:"8-BIT LOAD", color:"#38e1ff",
+      desc:"在寄存器、立即数与内存之间搬运单个字节。绝大多数只有 4–7 T，是程序中数量最多的一类指令。",
+      rows:[
+        {m:"LD r,r′", op:"0x40–0x7F", b:1, t:"4", mc:1, f:"无",
+         d:"把源寄存器 r′ 的 8 位值复制到目标寄存器 r。源保持不变。r/r′ 可为 A、B、C、D、E、H、L；操作码 0x40 + r×8 + r′。0x76 不是 LD，而是 HALT。", ex:"LD A,B"},
+        {m:"LD r,n", op:"06/0E/16/1E/26/2E/3E", b:2, t:"7", mc:2, f:"无",
+         d:"把紧跟操作码的 8 位立即数 n 装入寄存器 r。r 为 (HL) 时对应 LD (HL),n。", ex:"LD B,0FFh"},
+        {m:"LD r,(HL)", op:"0x46–0x7E（偶数）", b:1, t:"7", mc:2, f:"无",
+         d:"以 HL 为地址，从内存读一个字节装入 r。除 r=(HL) 外编码为 0x40 + r×8 + 6。", ex:"LD A,(HL)"},
+        {m:"LD r,(IX+d)", op:"DD 46+8r d", b:3, t:"19", mc:5, f:"无",
+         d:"以 IX + 有符号偏移 d 为地址，读内存装入 r。多出 DD 前缀与偏移字节，共 19 T。", ex:"LD B,(IX+5)"},
+        {m:"LD r,(IY+d)", op:"FD 46+8r d", b:3, t:"19", mc:5, f:"无",
+         d:"以 IY + 有符号偏移 d 为地址，读内存装入 r。", ex:"LD B,(IY+5)"},
+        {m:"LD (HL),r", op:"0x70–0x77", b:1, t:"7", mc:2, f:"无",
+         d:"把寄存器 r 的字节写入 HL 指向的内存。r 不能是 (HL) 本身。", ex:"LD (HL),C"},
+        {m:"LD (HL),n", op:"36 n", b:2, t:"10", mc:3, f:"无",
+         d:"把立即数 n 写入 HL 指向的内存。两个操作数都不在寄存器里，因此需要 3 个 M 周期。", ex:"LD (HL),42h"},
+        {m:"LD (IX+d),r", op:"DD 70+8r d", b:3, t:"19", mc:5, f:"无",
+         d:"把寄存器 r 写入 IX+d 指向的内存。", ex:"LD (IX+2),A"},
+        {m:"LD (IY+d),r", op:"FD 70+8r d", b:3, t:"19", mc:5, f:"无",
+         d:"把寄存器 r 写入 IY+d 指向的内存。", ex:"LD (IY+2),A"},
+        {m:"LD (IX+d),n", op:"DD 36 d n", b:4, t:"19", mc:5, f:"无",
+         d:"把立即数 n 写入 IX+d 指向的内存。4 字节：前缀、操作码、偏移、立即数。", ex:"LD (IX+2),7Fh"},
+        {m:"LD (IY+d),n", op:"FD 36 d n", b:4, t:"19", mc:5, f:"无",
+         d:"把立即数 n 写入 IY+d 指向的内存。", ex:"LD (IY+2),7Fh"},
+        {m:"LD A,(BC)", op:"0A", b:1, t:"7", mc:2, f:"无",
+         d:"从 BC 指向的内存读一个字节到 A。适合遍历连续数组。", ex:"LD A,(BC)"},
+        {m:"LD A,(DE)", op:"1A", b:1, t:"7", mc:2, f:"无",
+         d:"从 DE 指向的内存读一个字节到 A。", ex:"LD A,(DE)"},
+        {m:"LD A,(nn)", op:"3A nn nn", b:3, t:"13", mc:4, f:"无",
+         d:"从 16 位绝对地址 nn 读一个字节到 A。低字节在前。", ex:"LD A,(4000h)"},
+        {m:"LD (BC),A", op:"02", b:1, t:"7", mc:2, f:"无",
+         d:"把 A 写入 BC 指向的内存。", ex:"LD (BC),A"},
+        {m:"LD (DE),A", op:"12", b:1, t:"7", mc:2, f:"无",
+         d:"把 A 写入 DE 指向的内存。", ex:"LD (DE),A"},
+        {m:"LD (nn),A", op:"32 nn nn", b:3, t:"13", mc:4, f:"无",
+         d:"把 A 写入 16 位绝对地址 nn。", ex:"LD (4000h),A"},
+        {m:"LD A,I", op:"ED 57", b:2, t:"9", mc:3, f:"S Z H=0 N=0 P/V=IFF2；C 不变",
+         d:"把中断向量寄存器 I 读入 A。同时把 IFF2 复制到 P/V，常用来检测中断状态。", ex:"LD A,I"},
+        {m:"LD A,R", op:"ED 5F", b:2, t:"9", mc:3, f:"S Z H=0 N=0 P/V=IFF2；C 不变",
+         d:"把刷新寄存器 R 读入 A。R 低 7 位在每次 M1 后递增，可作伪随机数源。", ex:"LD A,R"},
+        {m:"LD I,A", op:"ED 47", b:2, t:"9", mc:3, f:"无",
+         d:"把 A 写入中断向量寄存器 I。IM 2 模式下必须先设好 I 与向量表。", ex:"LD I,A"},
+        {m:"LD R,A", op:"ED 4F", b:2, t:"9", mc:3, f:"无",
+         d:"把 A 写入刷新寄存器 R。很少使用，主要用于测试。", ex:"LD R,A"}
+      ]
+    },
+    {
+      id:"load16", title:"16 位数据传送", en:"16-BIT LOAD", color:"#6ea8ff",
+      desc:"寄存器对与内存之间的 16 位搬运。内存中的 16 位数按小端序存放：低字节在低地址。",
+      rows:[
+        {m:"LD BC,nn", op:"01 nn nn", b:3, t:"10", mc:3, f:"无", d:"把 16 位立即数装入 BC。", ex:"LD BC,1234h"},
+        {m:"LD DE,nn", op:"11 nn nn", b:3, t:"10", mc:3, f:"无", d:"把 16 位立即数装入 DE。", ex:"LD DE,1234h"},
+        {m:"LD HL,nn", op:"21 nn nn", b:3, t:"10", mc:3, f:"无", d:"把 16 位立即数装入 HL。最常用的指针初始化。", ex:"LD HL,4000h"},
+        {m:"LD SP,nn", op:"31 nn nn", b:3, t:"10", mc:3, f:"无", d:"把 16 位立即数装入栈指针。复位后通常第一件事就是设置 SP。", ex:"LD SP,0FFF0h"},
+        {m:"LD IX,nn", op:"DD 21 nn nn", b:4, t:"14", mc:4, f:"无", d:"把 16 位立即数装入 IX。多一个 DD 前缀，慢 4 T。", ex:"LD IX,4000h"},
+        {m:"LD IY,nn", op:"FD 21 nn nn", b:4, t:"14", mc:4, f:"无", d:"把 16 位立即数装入 IY。", ex:"LD IY,4000h"},
+        {m:"LD HL,(nn)", op:"2A nn nn", b:3, t:"16", mc:5, f:"无", d:"从绝对地址 nn 读 16 位数装入 HL：低字节到 L，高字节到 H。", ex:"LD HL,(4000h)"},
+        {m:"LD BC,(nn)", op:"ED 4B nn nn", b:4, t:"20", mc:6, f:"无", d:"从绝对地址 nn 读 16 位数装入 BC。ED 前缀版本。", ex:"LD BC,(4000h)"},
+        {m:"LD DE,(nn)", op:"ED 5B nn nn", b:4, t:"20", mc:6, f:"无", d:"从绝对地址 nn 读 16 位数装入 DE。", ex:"LD DE,(4000h)"},
+        {m:"LD SP,(nn)", op:"ED 7B nn nn", b:4, t:"20", mc:6, f:"无", d:"从绝对地址 nn 读 16 位数装入 SP。常用于任务切换恢复栈。", ex:"LD SP,(4000h)"},
+        {m:"LD IX,(nn)", op:"DD 2A nn nn", b:4, t:"20", mc:6, f:"无", d:"从绝对地址 nn 读 16 位数装入 IX。", ex:"LD IX,(4000h)"},
+        {m:"LD IY,(nn)", op:"FD 2A nn nn", b:4, t:"20", mc:6, f:"无", d:"从绝对地址 nn 读 16 位数装入 IY。", ex:"LD IY,(4000h)"},
+        {m:"LD (nn),HL", op:"22 nn nn", b:3, t:"16", mc:5, f:"无", d:"把 HL 写到绝对地址 nn。低字节写低地址，高字节写高地址。", ex:"LD (4000h),HL"},
+        {m:"LD (nn),BC", op:"ED 43 nn nn", b:4, t:"20", mc:6, f:"无", d:"把 BC 写到绝对地址 nn。", ex:"LD (4000h),BC"},
+        {m:"LD (nn),DE", op:"ED 53 nn nn", b:4, t:"20", mc:6, f:"无", d:"把 DE 写到绝对地址 nn。", ex:"LD (4000h),DE"},
+        {m:"LD (nn),SP", op:"ED 73 nn nn", b:4, t:"20", mc:6, f:"无", d:"把 SP 写到绝对地址 nn。", ex:"LD (4000h),SP"},
+        {m:"LD (nn),IX", op:"DD 22 nn nn", b:4, t:"20", mc:6, f:"无", d:"把 IX 写到绝对地址 nn。", ex:"LD (4000h),IX"},
+        {m:"LD (nn),IY", op:"FD 22 nn nn", b:4, t:"20", mc:6, f:"无", d:"把 IY 写到绝对地址 nn。", ex:"LD (4000h),IY"},
+        {m:"LD SP,HL", op:"F9", b:1, t:"6", mc:1, f:"无", d:"把 HL 装入 SP。单字节完成栈指针切换，常用于返回局部栈帧。", ex:"LD SP,HL"},
+        {m:"LD SP,IX", op:"DD F9", b:2, t:"10", mc:2, f:"无", d:"把 IX 装入 SP。", ex:"LD SP,IX"},
+        {m:"LD SP,IY", op:"FD F9", b:2, t:"10", mc:2, f:"无", d:"把 IY 装入 SP。", ex:"LD SP,IY"},
+        {m:"PUSH BC", op:"C5", b:1, t:"11", mc:3, f:"无", d:"把 BC 压栈：SP 先减 1 存 B，再减 1 存 C。", ex:"PUSH BC"},
+        {m:"PUSH DE", op:"D5", b:1, t:"11", mc:3, f:"无", d:"把 DE 压栈。", ex:"PUSH DE"},
+        {m:"PUSH HL", op:"E5", b:1, t:"11", mc:3, f:"无", d:"把 HL 压栈。", ex:"PUSH HL"},
+        {m:"PUSH AF", op:"F5", b:1, t:"11", mc:3, f:"无", d:"把 A 与 F 一起压栈。保存现场最常用。", ex:"PUSH AF"},
+        {m:"PUSH IX", op:"DD E5", b:2, t:"15", mc:4, f:"无", d:"把 IX 压栈。比 PUSH HL 慢 4 T。", ex:"PUSH IX"},
+        {m:"PUSH IY", op:"FD E5", b:2, t:"15", mc:4, f:"无", d:"把 IY 压栈。", ex:"PUSH IY"},
+        {m:"POP BC", op:"C1", b:1, t:"10", mc:3, f:"无", d:"从栈弹出 16 位数到 BC：先读 C 再加 1，再读 B 再加 1。", ex:"POP BC"},
+        {m:"POP DE", op:"D1", b:1, t:"10", mc:3, f:"无", d:"从栈弹出到 DE。", ex:"POP DE"},
+        {m:"POP HL", op:"E1", b:1, t:"10", mc:3, f:"无", d:"从栈弹出到 HL。", ex:"POP HL"},
+        {m:"POP AF", op:"F1", b:1, t:"10", mc:3, f:"全部标志被恢复", d:"从栈弹出到 AF，同时恢复全部标志。注意低字节直接写入 F。", ex:"POP AF"},
+        {m:"POP IX", op:"DD E1", b:2, t:"14", mc:4, f:"无", d:"从栈弹出到 IX。", ex:"POP IX"},
+        {m:"POP IY", op:"FD E1", b:2, t:"14", mc:4, f:"无", d:"从栈弹出到 IY。", ex:"POP IY"}
+      ]
+    },
+    {
+      id:"exchange", title:"交换与块传送", en:"EXCHANGE · BLOCK TRANSFER", color:"#a78bfa",
+      desc:"交换两组寄存器，或一次性搬运/比较整块内存。块指令把地址、计数与循环合并在一条指令里，但每条仍按重复次数计时。",
+      rows:[
+        {m:"EX DE,HL", op:"EB", b:1, t:"4", mc:1, f:"无", d:"交换 DE 与 HL 的内容。4 T 完成，常用来临时换出指针。", ex:"EX DE,HL"},
+        {m:"EX AF,AF′", op:"08", b:1, t:"4", mc:1, f:"全部标志随 AF 交换", d:"交换 AF 与影子寄存器 AF′。一条指令保存/恢复 A 与全部标志。", ex:"EX AF,AF′"},
+        {m:"EXX", op:"D9", b:1, t:"4", mc:1, f:"无", d:"同时交换 BC↔BC′、DE↔DE′、HL↔HL′。中断处理里 4 T 换入一整套寄存器。", ex:"EXX"},
+        {m:"EX (SP),HL", op:"E3", b:1, t:"19", mc:5, f:"无", d:"交换 HL 与栈顶 16 位数。常用于取回返回地址或临时替换栈上数据。", ex:"EX (SP),HL"},
+        {m:"EX (SP),IX", op:"DD E3", b:2, t:"23", mc:6, f:"无", d:"交换 IX 与栈顶 16 位数。", ex:"EX (SP),IX"},
+        {m:"EX (SP),IY", op:"FD E3", b:2, t:"23", mc:6, f:"无", d:"交换 IY 与栈顶 16 位数。", ex:"EX (SP),IY"},
+        {m:"LDI", op:"ED A0", b:2, t:"16", mc:4, f:"H=0 N=0；P/V=BC≠0；S Z C 不变", d:"把 (HL) 的一个字节复制到 (DE)，然后 DE++、HL++、BC−−。单次搬运。", ex:"LDI"},
+        {m:"LDIR", op:"ED B0", b:2, t:"21 / 16", mc:"5 / 4", f:"H=0 N=0；P/V=BC≠0；S Z C 不变", d:"重复 LDI 直到 BC=0。BC≠0 时 21 T，最后一次 16 T。memcpy 的硬件实现。", ex:"LDIR"},
+        {m:"LDD", op:"ED A8", b:2, t:"16", mc:4, f:"H=0 N=0；P/V=BC≠0；S Z C 不变", d:"把 (HL) 复制到 (DE)，然后 DE−−、HL−−、BC−−。反向搬运。", ex:"LDD"},
+        {m:"LDDR", op:"ED B8", b:2, t:"21 / 16", mc:"5 / 4", f:"H=0 N=0；P/V=BC≠0；S Z C 不变", d:"重复 LDD 直到 BC=0。", ex:"LDDR"},
+        {m:"CPI", op:"ED A1", b:2, t:"16", mc:4, f:"S Z H；P/V=BC≠0；N=1；C 不变", d:"比较 A 与 (HL)，HL++、BC−−。只更新标志，不修改 A 或内存。", ex:"CPI"},
+        {m:"CPIR", op:"ED B1", b:2, t:"21 / 16", mc:"5 / 4", f:"S Z H；P/V=BC≠0；N=1；C 不变", d:"重复 CPI，直到找到相等字节（Z=1）或 BC=0。相当于 memchr。", ex:"CPIR"},
+        {m:"CPD", op:"ED A9", b:2, t:"16", mc:4, f:"S Z H；P/V=BC≠0；N=1；C 不变", d:"比较 A 与 (HL)，然后 HL−−、BC−−。", ex:"CPD"},
+        {m:"CPDR", op:"ED B9", b:2, t:"21 / 16", mc:"5 / 4", f:"S Z H；P/V=BC≠0；N=1；C 不变", d:"重复 CPD 直到匹配或 BC=0。反向搜索。", ex:"CPDR"}
+      ]
+    },
+    {
+      id:"alu8", title:"8 位算术与逻辑", en:"8-BIT ARITHMETIC & LOGIC", color:"#ffc857",
+      desc:"全部以 A 为目标：ADD/ADC/SUB/SBC 做加减，AND/OR/XOR 做位运算，CP 只比较不保存。注意 SUB 等指令没有 “SUB r,r′” 形式，目标固定为 A。",
+      rows:alu8Rows
+    },
+    {
+      id:"misc", title:"通用算术与标志控制", en:"GENERAL-PURPOSE ARITHMETIC", color:"#5cffa8",
+      desc:"BCD 调整、取反、标志位操作。DAA 与 N/H 标志配合，是 8 位 CPU 上实现十进制运算的关键。",
+      rows:[
+        {m:"DAA", op:"27", b:1, t:"4", mc:1, f:"S Z H P/V=奇偶 C；N 保持不变", d:"十进制调整：根据 N、H、C 与 A 的值，把 A 调整为正确的 BCD 结果。必须紧跟在 ADD/ADC/SUB/SBC 之后。", ex:"ADD A,B\nDAA"},
+        {m:"CPL", op:"2F", b:1, t:"4", mc:1, f:"H=1 N=1；S Z P/V C 不变", d:"把 A 按位取反（A = ~A）。等价于 A XOR 0FFh，但对标志影响不同。", ex:"CPL"},
+        {m:"NEG", op:"ED 44", b:2, t:"8", mc:2, f:"S Z H V C（N=1）", d:"A = 0 − A，即对 A 取补码（取负）。ED 前缀，8 T。", ex:"NEG"},
+        {m:"CCF", op:"3F", b:1, t:"4", mc:1, f:"H=旧 C；N=0；C=~C", d:"反转进位标志 C。旧的 C 被复制到 H，用于后续 DAA 或位运算。", ex:"CCF"},
+        {m:"SCF", op:"37", b:1, t:"4", mc:1, f:"H=0 N=0 C=1；S Z P/V 不变", d:"置位进位标志 C=1，其余标志按表中规则处理。常用于返回布尔真值。", ex:"SCF"}
+      ]
+    },
+    {
+      id:"alu16", title:"16 位算术", en:"16-BIT ARITHMETIC", color:"#ff9f5a",
+      desc:"对 16 位寄存器对做加、减、自增、自减。ADD HL,rr 只影响 H/N/C，不带进位版本用 ADC/SBC（ED 前缀）。",
+      rows:[
+        {m:"ADD HL,BC", op:"09", b:1, t:"11", mc:3, f:"H N=0 C；S Z P/V 不变", d:"HL = HL + BC，16 位加法。只更新 H、N、C，不更新 S/Z/P/V。", ex:"ADD HL,BC"},
+        {m:"ADD HL,DE", op:"19", b:1, t:"11", mc:3, f:"H N=0 C；S Z P/V 不变", d:"HL = HL + DE。", ex:"ADD HL,DE"},
+        {m:"ADD HL,HL", op:"29", b:1, t:"11", mc:3, f:"H N=0 C；S Z P/V 不变", d:"HL = HL + HL，即 HL 左移一位（乘 2）。", ex:"ADD HL,HL"},
+        {m:"ADD HL,SP", op:"39", b:1, t:"11", mc:3, f:"H N=0 C；S Z P/V 不变", d:"HL = HL + SP。", ex:"ADD HL,SP"},
+        {m:"ADD IX,BC", op:"DD 09", b:2, t:"15", mc:4, f:"H N=0 C；S Z P/V 不变", d:"IX = IX + BC。带 DD 前缀，15 T。", ex:"ADD IX,BC"},
+        {m:"ADD IX,DE", op:"DD 19", b:2, t:"15", mc:4, f:"H N=0 C；S Z P/V 不变", d:"IX = IX + DE。", ex:"ADD IX,DE"},
+        {m:"ADD IX,IX", op:"DD 29", b:2, t:"15", mc:4, f:"H N=0 C；S Z P/V 不变", d:"IX = IX + IX。", ex:"ADD IX,IX"},
+        {m:"ADD IX,SP", op:"DD 39", b:2, t:"15", mc:4, f:"H N=0 C；S Z P/V 不变", d:"IX = IX + SP。", ex:"ADD IX,SP"},
+        {m:"ADD IY,BC", op:"FD 09", b:2, t:"15", mc:4, f:"H N=0 C；S Z P/V 不变", d:"IY = IY + BC。", ex:"ADD IY,BC"},
+        {m:"ADD IY,DE", op:"FD 19", b:2, t:"15", mc:4, f:"H N=0 C；S Z P/V 不变", d:"IY = IY + DE。", ex:"ADD IY,DE"},
+        {m:"ADD IY,IY", op:"FD 29", b:2, t:"15", mc:4, f:"H N=0 C；S Z P/V 不变", d:"IY = IY + IY。", ex:"ADD IY,IY"},
+        {m:"ADD IY,SP", op:"FD 39", b:2, t:"15", mc:4, f:"H N=0 C；S Z P/V 不变", d:"IY = IY + SP。", ex:"ADD IY,SP"},
+        {m:"ADC HL,BC", op:"ED 4A", b:2, t:"15", mc:4, f:"S Z H V C（N=0）", d:"HL = HL + BC + C，带进位 16 位加法。更新全部算术标志。", ex:"ADC HL,BC"},
+        {m:"ADC HL,DE", op:"ED 5A", b:2, t:"15", mc:4, f:"S Z H V C（N=0）", d:"HL = HL + DE + C。", ex:"ADC HL,DE"},
+        {m:"ADC HL,HL", op:"ED 6A", b:2, t:"15", mc:4, f:"S Z H V C（N=0）", d:"HL = HL + HL + C。", ex:"ADC HL,HL"},
+        {m:"ADC HL,SP", op:"ED 7A", b:2, t:"15", mc:4, f:"S Z H V C（N=0）", d:"HL = HL + SP + C。", ex:"ADC HL,SP"},
+        {m:"SBC HL,BC", op:"ED 42", b:2, t:"15", mc:4, f:"S Z H V C（N=1）", d:"HL = HL − BC − C，带借位 16 位减法。", ex:"SBC HL,BC"},
+        {m:"SBC HL,DE", op:"ED 52", b:2, t:"15", mc:4, f:"S Z H V C（N=1）", d:"HL = HL − DE − C。", ex:"SBC HL,DE"},
+        {m:"SBC HL,HL", op:"ED 62", b:2, t:"15", mc:4, f:"S Z H V C（N=1）", d:"HL = HL − HL − C，可把 C 扩展成 16 位结果。", ex:"SBC HL,HL"},
+        {m:"SBC HL,SP", op:"ED 72", b:2, t:"15", mc:4, f:"S Z H V C（N=1）", d:"HL = HL − SP − C。", ex:"SBC HL,SP"},
+        {m:"INC BC", op:"03", b:1, t:"6", mc:1, f:"无", d:"BC 加 1。不影响任何标志，循环计数不会破坏比较结果。", ex:"INC BC"},
+        {m:"INC DE", op:"13", b:1, t:"6", mc:1, f:"无", d:"DE 加 1。", ex:"INC DE"},
+        {m:"INC HL", op:"23", b:1, t:"6", mc:1, f:"无", d:"HL 加 1。常用作指针前进。", ex:"INC HL"},
+        {m:"INC SP", op:"33", b:1, t:"6", mc:1, f:"无", d:"SP 加 1。", ex:"INC SP"},
+        {m:"INC IX", op:"DD 23", b:2, t:"10", mc:2, f:"无", d:"IX 加 1。", ex:"INC IX"},
+        {m:"INC IY", op:"FD 23", b:2, t:"10", mc:2, f:"无", d:"IY 加 1。", ex:"INC IY"},
+        {m:"DEC BC", op:"0B", b:1, t:"6", mc:1, f:"无", d:"BC 减 1。", ex:"DEC BC"},
+        {m:"DEC DE", op:"1B", b:1, t:"6", mc:1, f:"无", d:"DE 减 1。", ex:"DEC DE"},
+        {m:"DEC HL", op:"2B", b:1, t:"6", mc:1, f:"无", d:"HL 减 1。", ex:"DEC HL"},
+        {m:"DEC SP", op:"3B", b:1, t:"6", mc:1, f:"无", d:"SP 减 1。", ex:"DEC SP"},
+        {m:"DEC IX", op:"DD 2B", b:2, t:"10", mc:2, f:"无", d:"IX 减 1。", ex:"DEC IX"},
+        {m:"DEC IY", op:"FD 2B", b:2, t:"10", mc:2, f:"无", d:"IY 减 1。", ex:"DEC IY"}
+      ]
+    },
+    {
+      id:"rotate", title:"循环与移位", en:"ROTATE & SHIFT", color:"#ff5fa2",
+      desc:"CB 前缀版本可作用于任意寄存器或内存，更新 S/Z/H/P/V/C；RLCA 等单字节版本只对 A 操作，速度更快但只更新 H/N/C。",
+      rows:rotRows
+    },
+    {
+      id:"bit", title:"位操作", en:"BIT MANIPULATION", color:"#c084fc",
+      desc:"测试、清零、置位任意一位。BIT 只更新部分标志，RES 与 SET 完全不改标志，适合在中断或标志敏感代码里操作位。",
+      rows:bitRows
+    },
+    {
+      id:"jump", title:"跳转", en:"JUMP", color:"#38e1ff",
+      desc:"绝对跳转 3 字节、10 T；相对跳转 2 字节、12 T。相对跳转范围 −128 到 +127，但目标位置无关、更短，循环里更省空间。",
+      rows:[
+        {m:"JP nn", op:"C3 nn nn", b:3, t:"10", mc:3, f:"无", d:"无条件跳转到 16 位绝对地址 nn。PC 直接改写为 nn，不压栈。", ex:"JP 4000h"},
+        {m:"JP NZ,nn", op:"C2 nn nn", b:3, t:"10 / 7", mc:"3 / 2", f:"无", d:"Z=0 时跳到 nn，否则继续执行。不成立时 7 T。", ex:"JP NZ,4000h"},
+        {m:"JP Z,nn", op:"CA nn nn", b:3, t:"10 / 7", mc:"3 / 2", f:"无", d:"Z=1 时跳到 nn。常接在 CP 之后。", ex:"JP Z,4000h"},
+        {m:"JP NC,nn", op:"D2 nn nn", b:3, t:"10 / 7", mc:"3 / 2", f:"无", d:"C=0 时跳到 nn。", ex:"JP NC,4000h"},
+        {m:"JP C,nn", op:"DA nn nn", b:3, t:"10 / 7", mc:"3 / 2", f:"无", d:"C=1 时跳到 nn。", ex:"JP C,4000h"},
+        {m:"JP PO,nn", op:"E2 nn nn", b:3, t:"10 / 7", mc:"3 / 2", f:"无", d:"P/V=0（奇偶为奇 / 无溢出）时跳到 nn。", ex:"JP PO,4000h"},
+        {m:"JP PE,nn", op:"EA nn nn", b:3, t:"10 / 7", mc:"3 / 2", f:"无", d:"P/V=1（奇偶为偶 / 有溢出）时跳到 nn。", ex:"JP PE,4000h"},
+        {m:"JP P,nn", op:"F2 nn nn", b:3, t:"10 / 7", mc:"3 / 2", f:"无", d:"S=0（结果为正）时跳到 nn。", ex:"JP P,4000h"},
+        {m:"JP M,nn", op:"FA nn nn", b:3, t:"10 / 7", mc:"3 / 2", f:"无", d:"S=1（结果为负）时跳到 nn。", ex:"JP M,4000h"},
+        {m:"JR e", op:"18 e", b:2, t:"12", mc:3, f:"无", d:"相对跳转：PC = PC + 有符号偏移 e（−128 到 +127）。2 字节，位置无关代码必备。", ex:"JR loop"},
+        {m:"JR NZ,e", op:"20 e", b:2, t:"12 / 7", mc:"3 / 2", f:"无", d:"Z=0 时相对跳转。JR 只有 NZ/Z/NC/C 四种条件。", ex:"JR NZ,loop"},
+        {m:"JR Z,e", op:"28 e", b:2, t:"12 / 7", mc:"3 / 2", f:"无", d:"Z=1 时相对跳转。", ex:"JR Z,loop"},
+        {m:"JR NC,e", op:"30 e", b:2, t:"12 / 7", mc:"3 / 2", f:"无", d:"C=0 时相对跳转。", ex:"JR NC,loop"},
+        {m:"JR C,e", op:"38 e", b:2, t:"12 / 7", mc:"3 / 2", f:"无", d:"C=1 时相对跳转。", ex:"JR C,loop"},
+        {m:"JP (HL)", op:"E9", b:1, t:"4", mc:1, f:"无", d:"跳到 HL 中的地址。注意它不读内存，是寄存器间接跳转；4 T 最快。", ex:"JP (HL)"},
+        {m:"JP (IX)", op:"DD E9", b:2, t:"8", mc:2, f:"无", d:"跳到 IX 中的地址。", ex:"JP (IX)"},
+        {m:"JP (IY)", op:"FD E9", b:2, t:"8", mc:2, f:"无", d:"跳到 IY 中的地址。", ex:"JP (IY)"},
+        {m:"DJNZ e", op:"10 e", b:2, t:"13 / 8", mc:"3 / 2", f:"无", d:"B 先减 1；若 B≠0 则相对跳转。B=0 时不跳，8 T。倒计数循环的标准写法。", ex:"DJNZ loop"}
+      ]
+    },
+    {
+      id:"call", title:"调用、返回与重启", en:"CALL · RETURN · RESTART", color:"#ffc857",
+      desc:"调用把返回地址压栈再跳转；返回弹栈恢复 PC。RST 是单字节调用，固定 8 个向量地址，常用于中断入口。",
+      rows:[
+        {m:"CALL nn", op:"CD nn nn", b:3, t:"17", mc:5, f:"无", d:"把下一条指令地址压栈，然后跳到 nn。SP 减 2。", ex:"CALL 4000h"},
+        {m:"CALL NZ,nn", op:"C4 nn nn", b:3, t:"17 / 10", mc:"5 / 3", f:"无", d:"Z=0 时调用；不调用时只花 10 T，不压栈。", ex:"CALL NZ,4000h"},
+        {m:"CALL Z,nn", op:"CC nn nn", b:3, t:"17 / 10", mc:"5 / 3", f:"无", d:"Z=1 时调用。", ex:"CALL Z,4000h"},
+        {m:"CALL NC,nn", op:"D4 nn nn", b:3, t:"17 / 10", mc:"5 / 3", f:"无", d:"C=0 时调用。", ex:"CALL NC,4000h"},
+        {m:"CALL C,nn", op:"DC nn nn", b:3, t:"17 / 10", mc:"5 / 3", f:"无", d:"C=1 时调用。", ex:"CALL C,4000h"},
+        {m:"CALL PO,nn", op:"E4 nn nn", b:3, t:"17 / 10", mc:"5 / 3", f:"无", d:"P/V=0 时调用。", ex:"CALL PO,4000h"},
+        {m:"CALL PE,nn", op:"EC nn nn", b:3, t:"17 / 10", mc:"5 / 3", f:"无", d:"P/V=1 时调用。", ex:"CALL PE,4000h"},
+        {m:"CALL P,nn", op:"F4 nn nn", b:3, t:"17 / 10", mc:"5 / 3", f:"无", d:"S=0 时调用。", ex:"CALL P,4000h"},
+        {m:"CALL M,nn", op:"FC nn nn", b:3, t:"17 / 10", mc:"5 / 3", f:"无", d:"S=1 时调用。", ex:"CALL M,4000h"},
+        {m:"RET", op:"C9", b:1, t:"10", mc:3, f:"无", d:"从栈顶弹出 16 位返回地址装入 PC。", ex:"RET"},
+        {m:"RET NZ", op:"C0", b:1, t:"11 / 5", mc:"3 / 1", f:"无", d:"Z=0 时返回；不返回只花 5 T。", ex:"RET NZ"},
+        {m:"RET Z", op:"C8", b:1, t:"11 / 5", mc:"3 / 1", f:"无", d:"Z=1 时返回。", ex:"RET Z"},
+        {m:"RET NC", op:"D0", b:1, t:"11 / 5", mc:"3 / 1", f:"无", d:"C=0 时返回。", ex:"RET NC"},
+        {m:"RET C", op:"D8", b:1, t:"11 / 5", mc:"3 / 1", f:"无", d:"C=1 时返回。", ex:"RET C"},
+        {m:"RET PO", op:"E0", b:1, t:"11 / 5", mc:"3 / 1", f:"无", d:"P/V=0 时返回。", ex:"RET PO"},
+        {m:"RET PE", op:"E8", b:1, t:"11 / 5", mc:"3 / 1", f:"无", d:"P/V=1 时返回。", ex:"RET PE"},
+        {m:"RET P", op:"F0", b:1, t:"11 / 5", mc:"3 / 1", f:"无", d:"S=0 时返回。", ex:"RET P"},
+        {m:"RET M", op:"F8", b:1, t:"11 / 5", mc:"3 / 1", f:"无", d:"S=1 时返回。", ex:"RET M"},
+        {m:"RETI", op:"ED 4D", b:2, t:"14", mc:4, f:"无", d:"从中断返回。除弹栈外还通知 Z80 外设中断控制器本次中断处理结束。", ex:"RETI"},
+        {m:"RETN", op:"ED 45", b:2, t:"14", mc:4, f:"无", d:"从不可屏蔽中断返回：弹栈并把 IFF2 复制回 IFF1，恢复原中断允许状态。", ex:"RETN"}
+      ].concat(rstRows)
+    },
+    {
+      id:"io", title:"输入输出", en:"INPUT / OUTPUT", color:"#5cffa8",
+      desc:"Z80 使用独立 I/O 空间。地址总线低 8 位为端口号，高 8 位输出 A 的值；16 位端口地址由 BC 提供。",
+      rows:[
+        {m:"IN A,(n)", op:"DB n", b:2, t:"11", mc:3, f:"无", d:"从端口 n 读一个字节到 A。端口号只有 8 位，A 同时出现在地址总线高 8 位。", ex:"IN A,(20h)"},
+        {m:"IN B,(C)", op:"ED 40", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"从 BC 指定的端口读入 B。地址总线输出整个 BC，端口号实际为 C。", ex:"IN B,(C)"},
+        {m:"IN C,(C)", op:"ED 48", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"从端口 (C) 读入 C。", ex:"IN C,(C)"},
+        {m:"IN D,(C)", op:"ED 50", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"从端口 (C) 读入 D。", ex:"IN D,(C)"},
+        {m:"IN E,(C)", op:"ED 58", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"从端口 (C) 读入 E。", ex:"IN E,(C)"},
+        {m:"IN H,(C)", op:"ED 60", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"从端口 (C) 读入 H。", ex:"IN H,(C)"},
+        {m:"IN L,(C)", op:"ED 68", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"从端口 (C) 读入 L。", ex:"IN L,(C)"},
+        {m:"IN A,(C)", op:"ED 78", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"从端口 (C) 读入 A。", ex:"IN A,(C)"},
+        {m:"INI", op:"ED A2", b:2, t:"16", mc:4, f:"S Z H P/V=奇偶；C 不变", d:"从端口 (C) 读一个字节到 (HL)，HL++，B−−。块输入。", ex:"INI"},
+        {m:"INIR", op:"ED B2", b:2, t:"21 / 16", mc:"5 / 4", f:"S Z H P/V=奇偶；C 不变", d:"重复 INI 直到 B=0。", ex:"INIR"},
+        {m:"IND", op:"ED AA", b:2, t:"16", mc:4, f:"S Z H P/V=奇偶；C 不变", d:"从端口 (C) 读一个字节到 (HL)，HL−−，B−−。", ex:"IND"},
+        {m:"INDR", op:"ED BA", b:2, t:"21 / 16", mc:"5 / 4", f:"S Z H P/V=奇偶；C 不变", d:"重复 IND 直到 B=0。", ex:"INDR"},
+        {m:"OUT (n),A", op:"D3 n", b:2, t:"11", mc:3, f:"无", d:"把 A 写到端口 n。与 IN A,(n) 对称。", ex:"OUT (20h),A"},
+        {m:"OUT (C),B", op:"ED 41", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"把 B 写到端口 (C)，同时地址总线输出 BC。", ex:"OUT (C),B"},
+        {m:"OUT (C),C", op:"ED 49", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"把 C 写到端口 (C)。", ex:"OUT (C),C"},
+        {m:"OUT (C),D", op:"ED 51", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"把 D 写到端口 (C)。", ex:"OUT (C),D"},
+        {m:"OUT (C),E", op:"ED 59", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"把 E 写到端口 (C)。", ex:"OUT (C),E"},
+        {m:"OUT (C),H", op:"ED 61", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"把 H 写到端口 (C)。", ex:"OUT (C),H"},
+        {m:"OUT (C),L", op:"ED 69", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"把 L 写到端口 (C)。", ex:"OUT (C),L"},
+        {m:"OUT (C),A", op:"ED 79", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"把 A 写到端口 (C)。", ex:"OUT (C),A"},
+        {m:"OUTI", op:"ED A3", b:2, t:"16", mc:4, f:"S Z H P/V=奇偶；C 不变", d:"把 (HL) 写到端口 (C)，HL++，B−−。块输出。", ex:"OUTI"},
+        {m:"OTIR", op:"ED B3", b:2, t:"21 / 16", mc:"5 / 4", f:"S Z H P/V=奇偶；C 不变", d:"重复 OUTI 直到 B=0。", ex:"OTIR"},
+        {m:"OUTD", op:"ED AB", b:2, t:"16", mc:4, f:"S Z H P/V=奇偶；C 不变", d:"把 (HL) 写到端口 (C)，HL−−，B−−。", ex:"OUTD"},
+        {m:"OTDR", op:"ED BB", b:2, t:"21 / 16", mc:"5 / 4", f:"S Z H P/V=奇偶；C 不变", d:"重复 OUTD 直到 B=0。", ex:"OTDR"}
+      ]
+    },
+    {
+      id:"control", title:"CPU 控制与中断", en:"CPU CONTROL & INTERRUPTS", color:"#ff6b6b",
+      desc:"空操作、停机与中断开关。EI 的实际生效点在下一条指令之后，因此 EI 后紧跟 DI 不会打开中断。",
+      rows:[
+        {m:"NOP", op:"00", b:1, t:"4", mc:1, f:"无", d:"空操作。只推进 PC、刷新内存，不改变任何寄存器或标志。", ex:"NOP"},
+        {m:"HALT", op:"76", b:1, t:"4", mc:1, f:"无", d:"暂停 CPU 执行，反复执行内部 NOP 维持刷新，直到中断或复位。时钟继续运行。", ex:"HALT"},
+        {m:"DI", op:"F3", b:1, t:"4", mc:1, f:"无", d:"关闭可屏蔽中断：IFF1 = IFF2 = 0。NMI 不受影响。", ex:"DI"},
+        {m:"EI", op:"FB", b:1, t:"4", mc:1, f:"无", d:"打开可屏蔽中断。中断在 EI 的下一条指令执行后才被接受，保证 RET/EI 序列安全。", ex:"EI"},
+        {m:"IM 0", op:"ED 46", b:2, t:"8", mc:2, f:"无", d:"中断模式 0：中断设备把一条指令放到总线上执行（通常为 RST）。兼容 8080 方式。", ex:"IM 0"},
+        {m:"IM 1", op:"ED 56", b:2, t:"8", mc:2, f:"无", d:"中断模式 1：任何可屏蔽中断都跳到 0038h。最简单、最常用的模式。", ex:"IM 1"},
+        {m:"IM 2", op:"ED 5E", b:2, t:"8", mc:2, f:"无", d:"中断模式 2：向量表模式。向量地址 = (I×256) + 设备数据字节，从中取 16 位处理程序地址。", ex:"IM 2"}
+      ]
+    },
+    {
+      id:"undoc", title:"未公开指令与行为", en:"UNDOCUMENTED", color:"#8b90b5",
+      desc:"Z80 存在大量未写入官方手册但被硬件实现的指令。它们稳定可用，但不同 CMOS 型号行为可能略有差异，移植时需注意。",
+      rows:[
+        {m:"SLL / SLI", op:"CB 30+8r", b:2, t:"8", mc:2, f:"S Z H=0 P/V=奇偶 N=0 C", d:"未公开：左移一位，最低位补 1。其余同 SLA。作用于寄存器、(HL)、(IX+d) 时时序分别为 8/15/23。", ex:"SLL A"},
+        {m:"LD IXH,n", op:"DD 26 n", b:3, t:"11", mc:3, f:"无", d:"未公开：DD 前缀使 H/L 指向 IX 的高/低字节。DD 26 n 即 LD IXH,n，3 字节 11 T。", ex:"LD IXH,12h"},
+        {m:"LD IXL,n", op:"DD 2E n", b:3, t:"11", mc:3, f:"无", d:"未公开：把立即数装入 IX 的低字节 IXL。", ex:"LD IXL,34h"},
+        {m:"LD IYH,n", op:"FD 26 n", b:3, t:"11", mc:3, f:"无", d:"未公开：把立即数装入 IY 的高字节 IYH。", ex:"LD IYH,12h"},
+        {m:"LD IYL,n", op:"FD 2E n", b:3, t:"11", mc:3, f:"无", d:"未公开：把立即数装入 IY 的低字节 IYL。", ex:"LD IYL,34h"},
+        {m:"LD r,(IX+d) 双操作", op:"DD CB d 06+8r", b:4, t:"23", mc:6, f:"按低 3 位对应指令", d:"未公开：IX+d 的位/移位操作若低 3 位不为 6，结果会同时写入指定寄存器。例：DD CB d 06 既执行 RES 0,(IX+d)，又把结果装入 B。", ex:"DD CB 05 06"},
+        {m:"IN (C)", op:"ED 70", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"未公开：从端口 (C) 读入但丢弃结果，只更新标志。可用来读取端口状态而不占用寄存器。", ex:"IN (C)"},
+        {m:"OUT (C),0", op:"ED 71", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"未公开：向端口 (C) 输出 0。NMOS Z80 输出 00h；部分 CMOS 型号输出 FFh。", ex:"OUT (C),0"},
+        {m:"ED 空操作", op:"ED 00 / ED 4C 等", b:2, t:"8", mc:2, f:"无", d:"未公开：未定义的 ED 前缀组合执行 8 T 空操作，不改变寄存器与标志。可作 2 字节 NOP 使用。", ex:"ED 00"}
+      ]
+    }
+  ];
+
+  /* ============================================================
+     RENDER INSTRUCTION SECTIONS
+     ============================================================ */
+  const instRoot = document.getElementById("instructions");
+  const flatRows = [];
+  let counter = 0;
+
+  sections.forEach(function(sec){
+    const el = document.createElement("section");
+    el.className = "inst-sec reveal";
+    el.id = sec.id;
+    el.setAttribute("data-spy", "");
+    el.style.setProperty("--accent", sec.color);
+    el.innerHTML =
+      '<div class="inst-head">' +
+        '<div class="sec-head">' +
+          '<span class="sec-num">' + String(sections.indexOf(sec) + 4).padStart(2, "0") + '</span>' +
+          '<h2 class="sec-title">' + sec.title + '</h2>' +
+          '<span class="sec-en">' + sec.en + '</span>' +
+        '</div>' +
+        '<p class="sec-desc">' + sec.desc + '</p>' +
+      '</div>' +
+      '<div class="hint"><span class="dot"></span>共 ' + sec.rows.length + ' 条 · 点击任意行查看详情</div>' +
+      '<div class="table-wrap"><div class="scroll-x"><table>' +
+        '<thead><tr>' +
+          '<th>助记符</th><th>操作码</th><th>字节</th><th>T 状态</th><th>M 周期</th><th>标志</th><th>说明</th>' +
+        '</tr></thead><tbody>' +
+        sec.rows.map(function(r){
+          const i = counter++;
+          flatRows.push({row:r, secTitle:sec.title, secId:sec.id});
+          return '<tr data-idx="' + i + '">' +
+            '<td class="mn">' + r.m + '</td>' +
+            '<td class="op">' + r.op + '</td>' +
+            '<td class="num">' + r.b + '</td>' +
+            '<td class="num t">' + r.t + '</td>' +
+            '<td class="num">' + r.mc + '</td>' +
+            '<td class="fl">' + r.f + '</td>' +
+            '<td class="desc">' + r.d + '</td>' +
+          '</tr>';
+        }).join('') +
+        '</tbody></table></div></div>';
+    instRoot.appendChild(el);
+  });
+
+  const totalRows = flatRows.length;
+  document.getElementById("countPill").textContent = totalRows + " 条指令";
+
+  /* searchable text */
+  document.querySelectorAll("#instructions tbody tr").forEach(function(tr){
+    const item = flatRows[Number(tr.dataset.idx)];
+    const r = item.row;
+    tr.dataset.search = (r.m + " " + r.op + " " + r.d + " " + r.f + " " + item.secTitle).toLowerCase();
+  });
+
+  /* ============================================================
+     TOC
+     ============================================================ */
+  const tocNav = document.getElementById("tocNav");
+  sections.forEach(function(sec, i){
+    const a = document.createElement("a");
+    a.href = "#" + sec.id;
+    a.innerHTML = '<span class="n">' + String(i + 4).padStart(2, "0") + '</span>' + sec.title;
+    tocNav.appendChild(a);
+  });
+
+  const mobileNav = document.getElementById("mobileNav");
+  const navItems = [
+    {id:"registers", title:"寄存器"},
+    {id:"flags", title:"标志"},
+    {id:"timing", title:"时序"}
+  ].concat(sections.map(function(sec){ return {id:sec.id, title:sec.title}; }));
+  navItems.forEach(function(item){
+    const a = document.createElement("a");
+    a.href = "#" + item.id;
+    a.textContent = item.title;
+    mobileNav.appendChild(a);
+  });
+
+  /* ============================================================
+     SEARCH
+     ============================================================ */
+  const search = document.getElementById("search");
+  const emptyState = document.getElementById("emptyState");
+
+  function syncSearchPlaceholder(){
+    search.placeholder = window.innerWidth <= 560 ? "搜索指令…" : "搜索指令、操作码、说明…";
+  }
+  syncSearchPlaceholder();
+  window.addEventListener("resize", syncSearchPlaceholder);
+
+  function applyFilter(){
+    const q = search.value.trim().toLowerCase();
+    let total = 0;
+    document.querySelectorAll(".inst-sec").forEach(function(sec){
+      let shown = 0;
+      sec.querySelectorAll("tbody tr").forEach(function(tr){
+        const hit = !q || tr.dataset.search.indexOf(q) !== -1;
+        tr.classList.toggle("hidden", !hit);
+        if(hit) shown++;
+      });
+      sec.classList.toggle("hidden", shown === 0);
+      total += shown;
+    });
+    emptyState.classList.toggle("show", total === 0);
+    document.getElementById("countPill").textContent = q ? (total + " / " + totalRows + " 条") : (totalRows + " 条指令");
+  }
+  search.addEventListener("input", applyFilter);
+
+  document.addEventListener("keydown", function(e){
+    if(e.key === "/" && document.activeElement !== search){
+      e.preventDefault();
+      search.focus();
+      search.select();
+    }
+    if(e.key === "Escape"){
+      if(modal.classList.contains("open")) closeModal();
+      else if(document.activeElement === search){ search.blur(); }
+    }
+  });
+
+  /* ============================================================
+     MODAL
+     ============================================================ */
+  const modal = document.getElementById("modal");
+  const mMn = document.getElementById("mMn");
+  const mCat = document.getElementById("mCat");
+  const mOp = document.getElementById("mOp");
+  const mBytes = document.getElementById("mBytes");
+  const mT = document.getElementById("mT");
+  const mM = document.getElementById("mM");
+  const mDesc = document.getElementById("mDesc");
+  const mEx = document.getElementById("mEx");
+  const mFlags = document.getElementById("mFlags");
+  let lastFocus = null;
+
+  function openModal(idx){
+    const item = flatRows[idx];
+    if(!item) return;
+    const r = item.row;
+    lastFocus = document.activeElement;
+    mMn.textContent = r.m;
+    mCat.textContent = item.secTitle + " · " + r.op;
+    mOp.textContent = r.op;
+    mBytes.textContent = r.b + " 字节";
+    mT.textContent = r.t + " T";
+    mM.textContent = r.mc + " M";
+    mDesc.textContent = r.d;
+    mEx.textContent = r.ex || "—";
+    mFlags.textContent = r.f;
+    modal.classList.add("open");
+    modal.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+    modal.querySelector(".modal-x").focus();
+  }
+  function closeModal(){
+    modal.classList.remove("open");
+    modal.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+    if(lastFocus) lastFocus.focus();
+  }
+
+  document.querySelectorAll("#instructions tbody tr").forEach(function(tr){
+    tr.addEventListener("click", function(){ openModal(Number(tr.dataset.idx)); });
+  });
+  modal.querySelectorAll("[data-close]").forEach(function(el){
+    el.addEventListener("click", closeModal);
+  });
+
+  /* ============================================================
+     SCROLL PROGRESS + SPY
+     ============================================================ */
+  const progress = document.getElementById("progress");
+  const spySections = Array.from(document.querySelectorAll("[data-spy]"));
+  const tocLinks = Array.from(document.querySelectorAll("#tocNav a, #mobileNav a"));
+  let ticking = false;
+  let lastSpyId = "";
+
+  function onScroll(){
+    const doc = document.documentElement;
+    const max = doc.scrollHeight - doc.clientHeight;
+    progress.style.width = (max > 0 ? (doc.scrollTop / max) * 100 : 0) + "%";
+
+    const offset = window.innerWidth <= 1000 ? 150 : 130;
+    let current = spySections[0];
+    for(let i = 0; i < spySections.length; i++){
+      if(spySections[i].getBoundingClientRect().top <= offset) current = spySections[i];
+    }
+    if(current.id !== lastSpyId){
+      lastSpyId = current.id;
+      tocLinks.forEach(function(a){
+        a.classList.toggle("active", a.getAttribute("href") === "#" + current.id);
+      });
+      if(mobileNav){
+        const active = mobileNav.querySelector("a.active");
+        if(active) mobileNav.scrollLeft = Math.max(0, active.offsetLeft - 16);
+      }
+    }
+    ticking = false;
+  }
+  window.addEventListener("scroll", function(){
+    if(!ticking){ requestAnimationFrame(onScroll); ticking = true; }
+  }, {passive:true});
+  onScroll();
+
+  /* ============================================================
+     REVEAL
+     ============================================================ */
+  if("IntersectionObserver" in window){
+    const io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(en.isIntersecting){ en.target.classList.add("in"); io.unobserve(en.target); }
+      });
+    }, {threshold:0.04, rootMargin:"0px 0px -40px 0px"});
+    document.querySelectorAll(".reveal").forEach(function(el){ io.observe(el); });
+  } else {
+    document.querySelectorAll(".reveal").forEach(function(el){ el.classList.add("in"); });
+  }
+
+  /* ============================================================
+     CLOCK CALCULATOR
+     ============================================================ */
+  const mhz = document.getElementById("mhz");
+  const nsPerT = document.getElementById("nsPerT");
+  const ns4T = document.getElementById("ns4T");
+  const ips = document.getElementById("ips");
+
+  function updateCalc(){
+    const f = parseFloat(mhz.value);
+    if(!isFinite(f) || f <= 0){
+      nsPerT.textContent = "—"; ns4T.textContent = "—"; ips.textContent = "—";
+      return;
+    }
+    const t = 1000 / f;
+    nsPerT.textContent = t.toFixed(1);
+    ns4T.textContent = (t * 4).toFixed(1);
+    ips.textContent = Math.round(f * 1e6 / 4).toLocaleString("en-US");
+  }
+  mhz.addEventListener("input", updateCalc);
+  updateCalc();
+})();
+</script>
+</body>
+</html>
