@@ -10,9 +10,8 @@
   // Config
   // ----------------------------------------------------------
 
-  // 新版放在 /new/，旧版仍从站点根目录提供。
-  // 如果以后把新版挪到根目录，记得同步修改这里。
-  const OLD_SITE = "https://joey-zyc.github.io/";
+  // 新版位于站点根目录，旧版搬到 /old/。
+  const OLD_SITE = "https://joey-zyc.github.io/old/";
   const GITHUB = "https://github.com/joey-zyc";
   const THEME_KEY = "joey-theme";
   const BOOT_KEY = "joey-booted";
@@ -598,7 +597,7 @@
     projects() {
       print(`<span class="accent">projects</span> <span class="dim">· 3 条目</span>`, "muted");
       print(`  <span class="cmd-name">this-site</span>          <span class="ok">live</span>      终端风格个人主页（就是这里）`, "muted");
-      print(`  <span class="cmd-name">old-site</span>           <span class="dim">archived</span>  初代主页，原地址仍在`, "muted");
+      print(`  <span class="cmd-name">old-site</span>           <span class="dim">archived</span>  初代主页，现位于 /old`, "muted");
       print(`  <span class="cmd-name">your-next-project</span>  <span class="dim">planned</span>   占位项目，等你来填`, "muted");
       print(`<span class="dim">详情看 projects.js，或输入 open projects.js。</span>`, "dim");
     },
@@ -997,7 +996,7 @@
 
   function welcome() {
     print(`<span class="accent">joey-zyc</span> <span class="dim">·</span> terminal portfolio <span class="warn">v2.0</span>`, "ok");
-    print(`旧版还在原地。这里是新版，一个可以敲命令的主页。`, "muted");
+    print(`旧版搬到了 /old。这里是新版，一个可以敲命令的主页。`, "muted");
     print(
       `输入 <span class="cmd-name">help</span> 查看命令 · <span class="dim">Ctrl + K</span> 打开命令面板 · <span class="dim">\`</span> 聚焦终端`,
       "muted"

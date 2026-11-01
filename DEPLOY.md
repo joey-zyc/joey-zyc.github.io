@@ -3,41 +3,40 @@
 ## 目录结构
 
 ```
-new/
-├── index.html   页面结构、样式引用、所有文字内容
-├── styles.css   视觉样式、明暗主题、响应式布局
-├── app.js       终端、命令面板、文件切换、主题等交互
-└── DEPLOY.md    本说明
+/
+├── index.html      新版首页：页面结构、样式引用、所有文字内容
+├── styles.css      新版视觉样式、明暗主题、响应式布局
+├── app.js          新版终端、命令面板、文件切换、主题等交互
+├── DEPLOY.md       本说明
+└── old/            旧版主页及全部资源
 ```
 
-整个新页面只有这三个运行文件，没有构建步骤，也没有第三方依赖。
+新版位于站点根目录，访问 `https://joey-zyc.github.io/` 即可。
+旧版完整搬到 `https://joey-zyc.github.io/old/`，其页面内的站内链接和资源路径
+已统一加上 `/old/` 前缀。
+
+整个站点是纯静态文件，没有构建步骤，也没有第三方依赖。
 
 Markdown 文件默认以排版预览显示，右上角可以在「预览 / 源码」之间切换。
 
 ## 部署到 GitHub Pages
 
-新页面放在仓库的 `new/` 目录中，旧版主页的文件位于仓库根目录，两者互不覆盖。
-
-1. 把 `new/` 整个目录提交到 `joey-zyc/joey-zyc.github.io` 仓库的 `main` 分支。
-2. GitHub Pages 已经为该用户站点开启，推送到 `main` 后会自动发布。
-3. 访问 `https://joey-zyc.github.io/new/` 查看新版。
-4. 旧版仍可通过 `https://joey-zyc.github.io/` 访问。
-
-如果以后想让新版接管根地址，需要先把旧站文件移动到别的目录（例如 `old/`），
-再把 `new/` 的内容移动到仓库根目录，并同步修改 `app.js` 顶部的 `OLD_SITE` 常量。
+1. 把改动提交到 `joey-zyc/joey-zyc.github.io` 仓库的 `main` 分支。
+2. GitHub Pages 已为该用户站点开启，推送到 `main` 后会自动发布。
+3. 新版访问 `https://joey-zyc.github.io/`，旧版访问 `https://joey-zyc.github.io/old/`。
 
 ## 本地预览
 
-直接双击 `index.html` 即可打开。若希望使用本地服务器：
+在仓库根目录启动静态服务器：
 
 ```bash
-cd new
 python -m http.server 8000
 ```
 
-然后访问 `http://localhost:8000/`。
+然后访问 `http://localhost:8000/`。必须使用服务器而不是直接双击 `index.html`，
+否则 `/old/` 这样的绝对路径无法解析。
 
-## 修改内容
+## 修改新版内容
 
 所有可见文字都在 `index.html` 底部的 `<template>` 标签里：
 
@@ -68,3 +67,8 @@ python -m http.server 8000
 `old`、`date`、`whoami`、`pwd`、`clear`、`exit`、`echo`、`cd`、`sudo`。
 
 支持 `Tab` 补全、上下方向键翻历史。
+
+## 修改旧版
+
+旧版是原先的 Hexo 静态导出，放在 `old/` 目录。它使用站点绝对路径，
+因此修改或新增文件时，页面里的站内地址需要写成 `/old/...`。
