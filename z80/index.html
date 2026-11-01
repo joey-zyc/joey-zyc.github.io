@@ -845,7 +845,7 @@
           </div>
         </div>
         <p class="flag-table-note" style="margin-top:18px">
-          条件跳转/调用/返回未成立时通常少一个 M 周期：<code>JP cc</code> 不成立 7T、<code>CALL cc</code> 不成立 10T、<code>RET cc</code> 不成立 5T、<code>JR cc</code> 不成立 7T。
+          <code>JP cc</code> 无论条件是否成立都固定 10T：两个地址字节总会被取完。其余条件指令不成立时更短：<code>CALL cc</code> 10T、<code>RET cc</code> 5T、<code>JR cc</code> 7T、<code>DJNZ</code> 8T。
           块指令重复执行时为 21T，最后一次不重复时为 16T。表中 “21 / 16” 即此含义。
         </p>
       </section>
@@ -902,7 +902,9 @@
       {m:op + " A,(HL)", op:hl, b:1, t:"7", mc:2, f:flags,
        d:desc + " 操作数取自 HL 指向的存储单元。", ex:op + " A,(HL)"},
       {m:op + " A,(IX+d)", op:"DD " + hl + " d", b:3, t:"19", mc:5, f:flags,
-       d:desc + " 操作数取自 IX+d 指向的存储单元，d 为有符号 8 位偏移。", ex:op + " A,(IX+2)"}
+       d:desc + " 操作数取自 IX+d 指向的存储单元，d 为有符号 8 位偏移。", ex:op + " A,(IX+2)"},
+      {m:op + " A,(IY+d)", op:"FD " + hl + " d", b:3, t:"19", mc:5, f:flags,
+       d:desc + " 操作数取自 IY+d 指向的存储单元，d 为有符号 8 位偏移。", ex:op + " A,(IY+2)"}
     ];
   }
 
@@ -931,12 +933,16 @@
      d:"HL 指向的内存字节加 1。需一次读和一次写，共 11 T。", ex:"INC (HL)"},
     {m:"INC (IX+d)", op:"DD 34 d", b:3, t:"23", mc:6, f:"S Z H V（N=0，C 不变）",
      d:"IX+d 指向的内存字节加 1。变址寻址需要额外地址计算周期。", ex:"INC (IX+1)"},
+    {m:"INC (IY+d)", op:"FD 34 d", b:3, t:"23", mc:6, f:"S Z H V（N=0，C 不变）",
+     d:"IY+d 指向的内存字节加 1。", ex:"INC (IY+1)"},
     {m:"DEC r", op:"05 + 8r", b:1, t:"4", mc:1, f:"S Z H V（N=1，C 不变）",
      d:"8 位寄存器减 1。C 标志不受影响。", ex:"DEC C"},
     {m:"DEC (HL)", op:"35", b:1, t:"11", mc:3, f:"S Z H V（N=1，C 不变）",
      d:"HL 指向的内存字节减 1。", ex:"DEC (HL)"},
     {m:"DEC (IX+d)", op:"DD 35 d", b:3, t:"23", mc:6, f:"S Z H V（N=1，C 不变）",
-     d:"IX+d 指向的内存字节减 1。", ex:"DEC (IX+1)"}
+     d:"IX+d 指向的内存字节减 1。", ex:"DEC (IX+1)"},
+    {m:"DEC (IY+d)", op:"FD 35 d", b:3, t:"23", mc:6, f:"S Z H V（N=1，C 不变）",
+     d:"IY+d 指向的内存字节减 1。", ex:"DEC (IY+1)"}
   );
 
   const rotDefs = [
@@ -957,7 +963,9 @@
       {m:def.op + " (HL)", op:"CB " + hex(def.base + 6), b:2, t:"15", mc:4, f:f,
        d:def.d + " 操作数为 (HL) 指向的内存字节。", ex:def.op + " (HL)"},
       {m:def.op + " (IX+d)", op:"DD CB d " + hex(def.base + 6), b:4, t:"23", mc:6, f:f,
-       d:def.d + " 操作数为 (IX+d)。注意前缀顺序为 DD CB d opcode。", ex:def.op + " (IX+3)"}
+       d:def.d + " 操作数为 (IX+d)。注意前缀顺序为 DD CB d opcode。", ex:def.op + " (IX+3)"},
+      {m:def.op + " (IY+d)", op:"FD CB d " + hex(def.base + 6), b:4, t:"23", mc:6, f:f,
+       d:def.d + " 操作数为 (IY+d)。前缀顺序为 FD CB d opcode。", ex:def.op + " (IY+3)"}
     );
   });
   rotRows.push(
@@ -969,14 +977,18 @@
      d:"A 经进位循环左移：旧 C 进入位 0，位 7 进入 C。", ex:"RLA"},
     {m:"RRA", op:"1F", b:1, t:"4", mc:1, f:"H=0 N=0 C；S Z P/V 不变",
      d:"A 经进位循环右移：旧 C 进入位 7，位 0 进入 C。", ex:"RRA"},
-    {m:"SLL r / (HL) / (IX+d)", op:"CB 30+8r 等", b:"2–4", t:"8 / 15 / 23", mc:"2 / 4 / 6",
+    {m:"SLL r / (HL) / (IX+d) / (IY+d)", op:"CB 30+8r 等", b:"2–4", t:"8 / 15 / 23", mc:"2 / 4 / 6",
      f:"S Z H=0 P/V=奇偶 N=0 C",
-     d:"未公开指令：左移一位且最低位补 1（不是 0）。时序与 SLA 完全相同，部分汇编器写作 SLI。", ex:"SLL B"}
+     d:"未公开指令：左移一位且最低位补 1（不是 0）。时序与 SLA 完全相同，部分汇编器写作 SLI。", ex:"SLL B"},
+    {m:"RLD", op:"ED 6F", b:2, t:"18", mc:5, f:"S Z H=0 P/V=奇偶 N=0；C 不变",
+     d:"4 位循环左移：A 低半字节 ← (HL) 高半字节，(HL) 高 ← (HL) 低，(HL) 低 ← A 低。常用于 BCD 数字串处理。", ex:"RLD"},
+    {m:"RRD", op:"ED 67", b:2, t:"18", mc:5, f:"S Z H=0 P/V=奇偶 N=0；C 不变",
+     d:"4 位循环右移：A 低半字节 ← (HL) 低半字节，(HL) 低 ← (HL) 高，(HL) 高 ← A 低。与 RLD 方向相反。", ex:"RRD"}
   );
 
   const bitRows = [];
   [
-    {op:"BIT", base:0x40, f:"Z（位为 0 则置 1）H=1 N=0",
+    {op:"BIT", base:0x40, f:"Z（位为 0 则置 1）H=1 N=0；S P/V 未定义",
      d:"测试操作数的第 b 位（b=0–7），将该位取反后写入 Z。不修改操作数。"},
     {op:"RES", base:0x80, f:"无",
      d:"把操作数的第 b 位清 0，其余位不变，不影响任何标志。"},
@@ -990,7 +1002,9 @@
       {m:def.op + " b,(HL)", op:"CB " + hex(def.base) + "+8b+6", b:2, t:isBit?"12":"15", mc:isBit?3:4, f:def.f,
        d:def.d + " 操作数为 (HL) 指向的内存字节。", ex:def.op + " 3,(HL)"},
       {m:def.op + " b,(IX+d)", op:"DD CB d " + hex(def.base) + "+8b+6", b:4, t:isBit?"20":"23", mc:isBit?5:6, f:def.f,
-       d:def.d + " 操作数为 (IX+d)。若低 3 位不为 6，还会把结果同时写入对应寄存器（未公开行为）。", ex:def.op + " 3,(IX+2)"}
+       d:def.d + " 操作数为 (IX+d)。若低 3 位不为 6，还会把结果同时写入对应寄存器（未公开行为）。", ex:def.op + " 3,(IX+2)"},
+      {m:def.op + " b,(IY+d)", op:"FD CB d " + hex(def.base) + "+8b+6", b:4, t:isBit?"20":"23", mc:isBit?5:6, f:def.f,
+       d:def.d + " 操作数为 (IY+d)。低 3 位不为 6 时同样会把结果写入对应寄存器。", ex:def.op + " 3,(IY+2)"}
     );
   });
 
@@ -1044,13 +1058,13 @@
          d:"把 A 写入 DE 指向的内存。", ex:"LD (DE),A"},
         {m:"LD (nn),A", op:"32 nn nn", b:3, t:"13", mc:4, f:"无",
          d:"把 A 写入 16 位绝对地址 nn。", ex:"LD (4000h),A"},
-        {m:"LD A,I", op:"ED 57", b:2, t:"9", mc:3, f:"S Z H=0 N=0 P/V=IFF2；C 不变",
+        {m:"LD A,I", op:"ED 57", b:2, t:"9", mc:2, f:"S Z H=0 N=0 P/V=IFF2；C 不变",
          d:"把中断向量寄存器 I 读入 A。同时把 IFF2 复制到 P/V，常用来检测中断状态。", ex:"LD A,I"},
-        {m:"LD A,R", op:"ED 5F", b:2, t:"9", mc:3, f:"S Z H=0 N=0 P/V=IFF2；C 不变",
+        {m:"LD A,R", op:"ED 5F", b:2, t:"9", mc:2, f:"S Z H=0 N=0 P/V=IFF2；C 不变",
          d:"把刷新寄存器 R 读入 A。R 低 7 位在每次 M1 后递增，可作伪随机数源。", ex:"LD A,R"},
-        {m:"LD I,A", op:"ED 47", b:2, t:"9", mc:3, f:"无",
+        {m:"LD I,A", op:"ED 47", b:2, t:"9", mc:2, f:"无",
          d:"把 A 写入中断向量寄存器 I。IM 2 模式下必须先设好 I 与向量表。", ex:"LD I,A"},
-        {m:"LD R,A", op:"ED 4F", b:2, t:"9", mc:3, f:"无",
+        {m:"LD R,A", op:"ED 4F", b:2, t:"9", mc:2, f:"无",
          d:"把 A 写入刷新寄存器 R。很少使用，主要用于测试。", ex:"LD R,A"}
       ]
     },
@@ -1182,14 +1196,14 @@
       desc:"绝对跳转 3 字节、10 T；相对跳转 2 字节、12 T。相对跳转范围 −128 到 +127，但目标位置无关、更短，循环里更省空间。",
       rows:[
         {m:"JP nn", op:"C3 nn nn", b:3, t:"10", mc:3, f:"无", d:"无条件跳转到 16 位绝对地址 nn。PC 直接改写为 nn，不压栈。", ex:"JP 4000h"},
-        {m:"JP NZ,nn", op:"C2 nn nn", b:3, t:"10 / 7", mc:"3 / 2", f:"无", d:"Z=0 时跳到 nn，否则继续执行。不成立时 7 T。", ex:"JP NZ,4000h"},
-        {m:"JP Z,nn", op:"CA nn nn", b:3, t:"10 / 7", mc:"3 / 2", f:"无", d:"Z=1 时跳到 nn。常接在 CP 之后。", ex:"JP Z,4000h"},
-        {m:"JP NC,nn", op:"D2 nn nn", b:3, t:"10 / 7", mc:"3 / 2", f:"无", d:"C=0 时跳到 nn。", ex:"JP NC,4000h"},
-        {m:"JP C,nn", op:"DA nn nn", b:3, t:"10 / 7", mc:"3 / 2", f:"无", d:"C=1 时跳到 nn。", ex:"JP C,4000h"},
-        {m:"JP PO,nn", op:"E2 nn nn", b:3, t:"10 / 7", mc:"3 / 2", f:"无", d:"P/V=0（奇偶为奇 / 无溢出）时跳到 nn。", ex:"JP PO,4000h"},
-        {m:"JP PE,nn", op:"EA nn nn", b:3, t:"10 / 7", mc:"3 / 2", f:"无", d:"P/V=1（奇偶为偶 / 有溢出）时跳到 nn。", ex:"JP PE,4000h"},
-        {m:"JP P,nn", op:"F2 nn nn", b:3, t:"10 / 7", mc:"3 / 2", f:"无", d:"S=0（结果为正）时跳到 nn。", ex:"JP P,4000h"},
-        {m:"JP M,nn", op:"FA nn nn", b:3, t:"10 / 7", mc:"3 / 2", f:"无", d:"S=1（结果为负）时跳到 nn。", ex:"JP M,4000h"},
+        {m:"JP NZ,nn", op:"C2 nn nn", b:3, t:"10", mc:3, f:"无", d:"Z=0 时跳到 nn，否则继续执行。JP cc 无论条件是否成立都取完 nn，固定 10 T。", ex:"JP NZ,4000h"},
+        {m:"JP Z,nn", op:"CA nn nn", b:3, t:"10", mc:3, f:"无", d:"Z=1 时跳到 nn。常接在 CP 之后。固定 10 T。", ex:"JP Z,4000h"},
+        {m:"JP NC,nn", op:"D2 nn nn", b:3, t:"10", mc:3, f:"无", d:"C=0 时跳到 nn。固定 10 T。", ex:"JP NC,4000h"},
+        {m:"JP C,nn", op:"DA nn nn", b:3, t:"10", mc:3, f:"无", d:"C=1 时跳到 nn。固定 10 T。", ex:"JP C,4000h"},
+        {m:"JP PO,nn", op:"E2 nn nn", b:3, t:"10", mc:3, f:"无", d:"P/V=0（奇偶为奇 / 无溢出）时跳到 nn。固定 10 T。", ex:"JP PO,4000h"},
+        {m:"JP PE,nn", op:"EA nn nn", b:3, t:"10", mc:3, f:"无", d:"P/V=1（奇偶为偶 / 有溢出）时跳到 nn。固定 10 T。", ex:"JP PE,4000h"},
+        {m:"JP P,nn", op:"F2 nn nn", b:3, t:"10", mc:3, f:"无", d:"S=0（结果为正）时跳到 nn。固定 10 T。", ex:"JP P,4000h"},
+        {m:"JP M,nn", op:"FA nn nn", b:3, t:"10", mc:3, f:"无", d:"S=1（结果为负）时跳到 nn。固定 10 T。", ex:"JP M,4000h"},
         {m:"JR e", op:"18 e", b:2, t:"12", mc:3, f:"无", d:"相对跳转：PC = PC + 有符号偏移 e（−128 到 +127）。2 字节，位置无关代码必备。", ex:"JR loop"},
         {m:"JR NZ,e", op:"20 e", b:2, t:"12 / 7", mc:"3 / 2", f:"无", d:"Z=0 时相对跳转。JR 只有 NZ/Z/NC/C 四种条件。", ex:"JR NZ,loop"},
         {m:"JR Z,e", op:"28 e", b:2, t:"12 / 7", mc:"3 / 2", f:"无", d:"Z=1 时相对跳转。", ex:"JR Z,loop"},
@@ -1239,22 +1253,22 @@
         {m:"IN H,(C)", op:"ED 60", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"从端口 (C) 读入 H。", ex:"IN H,(C)"},
         {m:"IN L,(C)", op:"ED 68", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"从端口 (C) 读入 L。", ex:"IN L,(C)"},
         {m:"IN A,(C)", op:"ED 78", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"从端口 (C) 读入 A。", ex:"IN A,(C)"},
-        {m:"INI", op:"ED A2", b:2, t:"16", mc:4, f:"S Z H P/V=奇偶；C 不变", d:"从端口 (C) 读一个字节到 (HL)，HL++，B−−。块输入。", ex:"INI"},
-        {m:"INIR", op:"ED B2", b:2, t:"21 / 16", mc:"5 / 4", f:"S Z H P/V=奇偶；C 不变", d:"重复 INI 直到 B=0。", ex:"INIR"},
-        {m:"IND", op:"ED AA", b:2, t:"16", mc:4, f:"S Z H P/V=奇偶；C 不变", d:"从端口 (C) 读一个字节到 (HL)，HL−−，B−−。", ex:"IND"},
-        {m:"INDR", op:"ED BA", b:2, t:"21 / 16", mc:"5 / 4", f:"S Z H P/V=奇偶；C 不变", d:"重复 IND 直到 B=0。", ex:"INDR"},
+        {m:"INI", op:"ED A2", b:2, t:"16", mc:4, f:"S H P/V 未定义；Z=B−1=0；N=1；C 不变", d:"从端口 (C) 读一个字节到 (HL)，HL++，B−−。块输入。", ex:"INI"},
+        {m:"INIR", op:"ED B2", b:2, t:"21 / 16", mc:"5 / 4", f:"S H P/V 未定义；Z=B−1=0；N=1；C 不变", d:"重复 INI 直到 B=0。", ex:"INIR"},
+        {m:"IND", op:"ED AA", b:2, t:"16", mc:4, f:"S H P/V 未定义；Z=B−1=0；N=1；C 不变", d:"从端口 (C) 读一个字节到 (HL)，HL−−，B−−。", ex:"IND"},
+        {m:"INDR", op:"ED BA", b:2, t:"21 / 16", mc:"5 / 4", f:"S H P/V 未定义；Z=B−1=0；N=1；C 不变", d:"重复 IND 直到 B=0。", ex:"INDR"},
         {m:"OUT (n),A", op:"D3 n", b:2, t:"11", mc:3, f:"无", d:"把 A 写到端口 n。与 IN A,(n) 对称。", ex:"OUT (20h),A"},
-        {m:"OUT (C),B", op:"ED 41", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"把 B 写到端口 (C)，同时地址总线输出 BC。", ex:"OUT (C),B"},
-        {m:"OUT (C),C", op:"ED 49", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"把 C 写到端口 (C)。", ex:"OUT (C),C"},
-        {m:"OUT (C),D", op:"ED 51", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"把 D 写到端口 (C)。", ex:"OUT (C),D"},
-        {m:"OUT (C),E", op:"ED 59", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"把 E 写到端口 (C)。", ex:"OUT (C),E"},
-        {m:"OUT (C),H", op:"ED 61", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"把 H 写到端口 (C)。", ex:"OUT (C),H"},
-        {m:"OUT (C),L", op:"ED 69", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"把 L 写到端口 (C)。", ex:"OUT (C),L"},
-        {m:"OUT (C),A", op:"ED 79", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"把 A 写到端口 (C)。", ex:"OUT (C),A"},
-        {m:"OUTI", op:"ED A3", b:2, t:"16", mc:4, f:"S Z H P/V=奇偶；C 不变", d:"把 (HL) 写到端口 (C)，HL++，B−−。块输出。", ex:"OUTI"},
-        {m:"OTIR", op:"ED B3", b:2, t:"21 / 16", mc:"5 / 4", f:"S Z H P/V=奇偶；C 不变", d:"重复 OUTI 直到 B=0。", ex:"OTIR"},
-        {m:"OUTD", op:"ED AB", b:2, t:"16", mc:4, f:"S Z H P/V=奇偶；C 不变", d:"把 (HL) 写到端口 (C)，HL−−，B−−。", ex:"OUTD"},
-        {m:"OTDR", op:"ED BB", b:2, t:"21 / 16", mc:"5 / 4", f:"S Z H P/V=奇偶；C 不变", d:"重复 OUTD 直到 B=0。", ex:"OTDR"}
+        {m:"OUT (C),B", op:"ED 41", b:2, t:"12", mc:3, f:"无", d:"把 B 写到端口 (C)，同时地址总线输出 BC。所有标志不变。", ex:"OUT (C),B"},
+        {m:"OUT (C),C", op:"ED 49", b:2, t:"12", mc:3, f:"无", d:"把 C 写到端口 (C)。所有标志不变。", ex:"OUT (C),C"},
+        {m:"OUT (C),D", op:"ED 51", b:2, t:"12", mc:3, f:"无", d:"把 D 写到端口 (C)。所有标志不变。", ex:"OUT (C),D"},
+        {m:"OUT (C),E", op:"ED 59", b:2, t:"12", mc:3, f:"无", d:"把 E 写到端口 (C)。所有标志不变。", ex:"OUT (C),E"},
+        {m:"OUT (C),H", op:"ED 61", b:2, t:"12", mc:3, f:"无", d:"把 H 写到端口 (C)。所有标志不变。", ex:"OUT (C),H"},
+        {m:"OUT (C),L", op:"ED 69", b:2, t:"12", mc:3, f:"无", d:"把 L 写到端口 (C)。所有标志不变。", ex:"OUT (C),L"},
+        {m:"OUT (C),A", op:"ED 79", b:2, t:"12", mc:3, f:"无", d:"把 A 写到端口 (C)。所有标志不变。", ex:"OUT (C),A"},
+        {m:"OUTI", op:"ED A3", b:2, t:"16", mc:4, f:"S H P/V 未定义；Z=B−1=0；N=1；C 不变", d:"把 (HL) 写到端口 (C)，HL++，B−−。块输出。", ex:"OUTI"},
+        {m:"OTIR", op:"ED B3", b:2, t:"21 / 16", mc:"5 / 4", f:"S H P/V 未定义；Z=B−1=0；N=1；C 不变", d:"重复 OUTI 直到 B=0。", ex:"OTIR"},
+        {m:"OUTD", op:"ED AB", b:2, t:"16", mc:4, f:"S H P/V 未定义；Z=B−1=0；N=1；C 不变", d:"把 (HL) 写到端口 (C)，HL−−，B−−。", ex:"OUTD"},
+        {m:"OTDR", op:"ED BB", b:2, t:"21 / 16", mc:"5 / 4", f:"S H P/V 未定义；Z=B−1=0；N=1；C 不变", d:"重复 OUTD 直到 B=0。", ex:"OTDR"}
       ]
     },
     {
@@ -1281,7 +1295,7 @@
         {m:"LD IYL,n", op:"FD 2E n", b:3, t:"11", mc:3, f:"无", d:"未公开：把立即数装入 IY 的低字节 IYL。", ex:"LD IYL,34h"},
         {m:"LD r,(IX+d) 双操作", op:"DD CB d 06+8r", b:4, t:"23", mc:6, f:"按低 3 位对应指令", d:"未公开：IX+d 的位/移位操作若低 3 位不为 6，结果会同时写入指定寄存器。例：DD CB d 06 既执行 RES 0,(IX+d)，又把结果装入 B。", ex:"DD CB 05 06"},
         {m:"IN (C)", op:"ED 70", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"未公开：从端口 (C) 读入但丢弃结果，只更新标志。可用来读取端口状态而不占用寄存器。", ex:"IN (C)"},
-        {m:"OUT (C),0", op:"ED 71", b:2, t:"12", mc:3, f:"S Z P/V=奇偶；H=0 N=0；C 不变", d:"未公开：向端口 (C) 输出 0。NMOS Z80 输出 00h；部分 CMOS 型号输出 FFh。", ex:"OUT (C),0"},
+        {m:"OUT (C),0", op:"ED 71", b:2, t:"12", mc:3, f:"无", d:"未公开：向端口 (C) 输出 0。NMOS Z80 输出 00h；部分 CMOS 型号输出 FFh。所有标志不变。", ex:"OUT (C),0"},
         {m:"ED 空操作", op:"ED 00 / ED 4C 等", b:2, t:"8", mc:2, f:"无", d:"未公开：未定义的 ED 前缀组合执行 8 T 空操作，不改变寄存器与标志。可作 2 字节 NOP 使用。", ex:"ED 00"}
       ]
     }
