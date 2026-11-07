@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>板块棋</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 20px;
+    font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    background: #0f172a; color: #e2e8f0;
+    display: flex; flex-wrap: wrap; gap: 24px; justify-content: center; align-items: flex-start;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { font-size: 12px; color: #94a3b8; margin-bottom: 12px; }
+
+  #board {
+    display: grid;
+    grid-template-columns: repeat(12, 40px);
+    grid-template-rows: repeat(12, 40px);
+    gap: 3px;
+    background: #1e293b;
+    padding: 8px; border-radius: 10px;
+  }
+  .cell {
+    position: relative;
+    border-radius: 6px;
+    background: #16202f;
+    cursor: default;
+    transition: background .12s, box-shadow .12s;
+  }
+  .tile-a { background: #1e40af; cursor: pointer; }
+  .tile-b { background: #991b1b; cursor: pointer; }
+  .tile-a.home, .tile-b.home {
+    box-shadow: inset 0 0 0 2px #fbbf24;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: #fde68a;
+  }
+  .canmove { box-shadow: inset 0 0 0 2px #ffffff55; }
+  /* 棋子压在自家板块上时，右下角的"抓板块"按钮：一键选中脚下的板块 */
+  .grip {
+    position: absolute; right: 0; bottom: 0; width: 15px; height: 15px;
+    border-radius: 3px; background: #fbbf24; color: #0b1220;
+    font-size: 10px; line-height: 15px; text-align: center; font-weight: 800;
+    cursor: pointer; z-index: 3; box-shadow: 0 0 0 1px #0007;
+  }
+  .grip:hover { background: #fde68a; }
+  .sel { box-shadow: 0 0 0 3px #fbbf24 !important; }
+  .hint::after {
+    content: ""; position: absolute; inset: 6px; border-radius: 4px;
+    border: 2px dashed #4ade80; background: rgba(74,222,128,.18);
+    pointer-events: none;
+  }
+  .piece {
+    position: absolute; inset: 5px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 800; color: #fff;
+    border: 2px solid #fff3; cursor: pointer; z-index: 2;
+  }
+  .p-a { background: #60a5fa; color: #0b1220; box-shadow: 0 0 0 3px #93c5fd55; }
+  .p-b { background: #f87171; color: #0b1220; box-shadow: 0 0 0 3px #fca5a555; }
+
+  .panel { width: 300px; }
+  .card {
+    background: #1e293b; border-radius: 10px; padding: 14px; margin-bottom: 12px;
+    font-size: 13px; line-height: 1.7;
+  }
+  .card h2 { font-size: 14px; margin: 0 0 8px; color: #f1f5f9; }
+  #status { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+  #msg { font-size: 12px; color: #fbbf24; min-height: 18px; margin-bottom: 8px; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; }
+  .dot-a { background: #60a5fa; } .dot-b { background: #f87171; }
+
+  button {
+    background: #334155; color: #e2e8f0; border: 0; border-radius: 7px;
+    padding: 8px 14px; font-size: 13px; cursor: pointer; margin-right: 8px;
+    font-family: inherit;
+  }
+  button:hover { background: #475569; }
+  label { font-size: 13px; display: block; margin-top: 10px; cursor: pointer; }
+  ul { margin: 6px 0 0; padding-left: 18px; color: #cbd5e1; }
+
+  #overlay {
+    position: fixed; inset: 0; background: #0f172acc; backdrop-filter: blur(3px);
+    display: none; align-items: center; justify-content: center; z-index: 99;
+  }
+  #overlay.on { display: flex; }
+  #overlay .box {
+    background: #1e293b; padding: 32px 44px; border-radius: 14px; text-align: center;
+  }
+  #overlay h2 { margin: 0 0 16px; font-size: 26px; }
+</style>
+</head>
+<body>
+
+<div>
+  <h1>板块棋</h1>
+  <div class="sub">v3 · 每回合两步：走棋子一步 / 走自家板块一步 / 各走一步</div>
+  <div id="err" style="display:none;background:#7f1d1d;color:#fecaca;padding:8px 10px;border-radius:6px;margin-bottom:8px;font-size:12px;white-space:pre-wrap"></div>
+  <div id="board"></div>
+</div>
+
+<div class="panel">
+  <div class="card">
+    <div id="status"></div>
+    <div id="msg"></div>
+    <div id="selinfo" style="font-size:12px;color:#94a3b8;min-height:18px;margin-bottom:8px"></div>
+    <button id="btn-end">结束回合</button>
+    <button id="btn-undo">撤销</button>
+    <button id="btn-reset">重开</button>
+    <label><input type="checkbox" id="chk-ai" checked> 电脑执红方（B）</label>
+    <label><input type="checkbox" id="chk-hint" checked> 高亮：当前回合能动的自家板块</label>
+    <label style="margin-top:12px">板块连通规则
+      <select id="rule-mode" style="width:100%;margin-top:4px;padding:5px;border-radius:6px;background:#334155;color:#e2e8f0;border:0;font-family:inherit">
+        <option value="loose" selected>标准：回合结束时两家仍连通</option>
+        <option value="strict">严格：再要求自家板块连成一体</option>
+      </select>
+      <div style="font-size:12px;color:#94a3b8;margin-top:4px">
+        两步走完才校验：自己的家到对方的家还走得通。不过关 → 整个回合作废，退回起点重走。
+      </div>
+    </label>
+  </div>
+
+  <div class="card">
+    <h2>怎么操作</h2>
+    <ul>
+      <li>点 <b>自家棋子所在格</b> → 选中棋子（走一格，必须落到板块上）</li>
+      <li>棋子压在自家板块上时，格子右下角有黄色 <b>块</b> 按钮 → 一键选中脚下那块板块</li>
+      <li>或者按住 <b>Shift</b> 点自家板块 → 同样直接抓板块</li>
+      <li>点其他自家板块 → 直接选中板块（只能移到相邻空格）</li>
+      <li>绿框 = 可以走的位置，点它落子</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>规则</h2>
+    <ul>
+      <li>棋子走到 <b>对方家格</b> → 直接获胜</li>
+      <li>棋子必须站在板块上，不能停在空白格</li>
+      <li>板块上有棋子也能移动，棋子跟着板块一起走</li>
+      <li>棋子落到对方普通板块格 → 对方可移动那块板块，把棋子带走</li>
+      <li>连通规则在<b>回合结束时</b>才检查，中途可以随意拆；不过关则整回合作废退回重走</li>
+      <li>棋子走到对方棋子所在格 → 吃掉对方，对方棋子回到自家家格</li>
+      <li>选择"严格"时自家板块能动的很少，属于限制模式</li>
+    </ul>
+  </div>
+
+  <div class="card" style="color:#94a3b8">
+    棋盘比初始布局大很多，四周全是空白格，足够双方扩张。
+  </div>
+</div>
+
+<div id="overlay"><div class="box"><h2 id="win-text"></h2><button id="btn-again">再来一局</button></div></div>
+
+<script>
+const ROWS = 12, COLS = 12;
+const OFF_R = 3, OFF_C = 4;
+// . 空  a=A普通板块  A=A家  b=B普通板块  B=B家
+const LAYOUT = [
+  ".aA.",
+  ".aa.",
+  "aaaa",
+  "bbbb",
+  ".bb.",
+  ".Bb."
+];
+const DIRS = [[-1,0],[1,0],[0,-1],[0,1]];
+const NAME = { a: "蓝方 A", b: "红方 B" };
+
+let tiles, piece, turn, steps, over, selected, legal, history, busy;
+let turnStart = null;      // 本回合开始时的完整状态（校验失败时回退到这里）
+let historyMark = 0;       // 本回合开始时的 history 长度（回退时把本回合的记录丢掉）
+let revertCount = 0;       // 连续作废次数，防止电脑无限重试
+const MAX_REVERT = 4;
+const aiEl = document.getElementById("chk-ai");
+const hintEl = document.getElementById("chk-hint");
+const ruleEl = document.getElementById("rule-mode");
+const boardEl = document.getElementById("board");
+const statusEl = document.getElementById("status");
+const msgEl = document.getElementById("msg");
+const overlay = document.getElementById("overlay");
+const selEl = document.getElementById("selinfo");
+
+window.onerror = (m, s, line, col) => {
+  const e = document.getElementById("err");
+  e.style.display = "block";
+  e.textContent = "脚本错误：" + m + "  @" + line + ":" + col;
+};
+
+const key = (r, c) => r + "," + c;
+const inBounds = (r, c) => r >= 0 && r < ROWS && c >= 0 && c < COLS;
+const tileAt = (r, c) => tiles[key(r, c)] || null;
+const other = p => (p === "a" ? "b" : "a");
+const dist = (x, y) => Math.abs(x.r - y.r) + Math.abs(x.c - y.c);
+
+let HOME = {};
+let START = {};
+
+function init() {
+  tiles = {};
+  for (let r = 0; r < LAYOUT.length; r++) {
+    for (let c = 0; c < LAYOUT[r].length; c++) {
+      const ch = LAYOUT[r][c];
+      if (ch === ".") continue;
+      const owner = ch.toLowerCase();
+      const home = ch === ch.toUpperCase();
+      tiles[key(OFF_R + r, OFF_C + c)] = { owner, home };
+      if (home) HOME[owner] = { r: OFF_R + r, c: OFF_C + c };
+    }
+  }
+  START = { a: { r: OFF_R + 0, c: OFF_C + 1 }, b: { r: OFF_R + 5, c: OFF_C + 2 } };
+  piece = { a: { ...START.a }, b: { ...START.b } };
+  turn = "a"; steps = 2; over = false; busy = false;
+  selected = null; legal = []; history = [];
+  revertCount = 0; historyMark = 0; turnStart = snapshot();
+  overlay.classList.remove("on");
+  render();
+}
+
+function ownTiles(owner, map) {
+  return Object.keys(map).filter(k => map[k].owner === owner).map(k => {
+    const [r, c] = k.split(",").map(Number);
+    return { r, c };
+  });
+}
+
+// 自家板块是否连通（4 邻接）
+function connected(owner, map) {
+  const list = ownTiles(owner, map);
+  if (list.length === 0) return true;
+  const set = new Set(list.map(t => key(t.r, t.c)));
+  if (set.size !== list.length) return false;
+  const seen = new Set();
+  const stack = [list[0]];
+  seen.add(key(list[0].r, list[0].c));
+  while (stack.length) {
+    const t = stack.pop();
+    for (const [dr, dc] of DIRS) {
+      const k = key(t.r + dr, t.c + dc);
+      if (set.has(k) && !seen.has(k)) {
+        seen.add(k);
+        const [r, c] = k.split(",").map(Number);
+        stack.push({ r, c });
+      }
+    }
+  }
+  return seen.size === set.size;
+}
+
+// 家格当前位置（板块可移动，所以按标记查找而不是记死坐标）
+function homePos(owner, map) {
+  for (const k in map) {
+    if (map[k].owner === owner && map[k].home) {
+      const [r, c] = k.split(",").map(Number);
+      return { r, c };
+    }
+  }
+  return null;
+}
+
+// 连通规则：双方的家必须一直连通，不能把自家切成孤岛。
+// 表现就是"自己的家到对方的家，还能沿着板块走过去"。
+// strict 额外要求自家所有板块连成一体。
+function ruleOK(owner, map) {
+  const h = homePos(owner, map), foeHome = homePos(other(owner), map);
+  if (!h || !foeHome) return false;
+  if (!Number.isFinite(pathLen(h, foeHome, map))) return false;   // 家和对方家断了
+  if (ruleEl.value === "strict") return connected(owner, map);
+  return true;
+}
+
+function pieceMoves(owner) {
+  const p = piece[owner], out = [];
+  for (const [dr, dc] of DIRS) {
+    const r = p.r + dr, c = p.c + dc;
+    if (!inBounds(r, c)) continue;
+    if (!tileAt(r, c)) continue;                    // 必须站在板块上
+    out.push({ r, c });                             // 含对方棋子格：走到即吃
+  }
+  return out;
+}
+
+// 落子：踩到对方棋子则吃子，对方棋子回自家家格
+function movePieceTo(owner, r, c) {
+  const foe = other(owner);
+  if (piece[foe].r === r && piece[foe].c === c) {
+    // 若对方家格正是落子格，则退回初始格，避免两子重叠
+    const h = homePos(foe, tiles);
+    const back = (h && !(h.r === r && h.c === c)) ? { r: h.r, c: h.c } : { ...START[foe] };
+    piece[foe] = back;
+  }
+  piece[owner] = { r, c };
+}
+
+// 走一步时不校验连通规则，只在回合结束时校验（校验不过整回合作废）
+function slabMoves(owner, sr, sc) {
+  const t = tileAt(sr, sc);
+  if (!t || t.owner !== owner) return [];
+  const out = [];
+  for (const [dr, dc] of DIRS) {
+    const r = sr + dr, c = sc + dc;
+    if (!inBounds(r, c)) continue;
+    if (tileAt(r, c)) continue;
+    out.push({ r, c });
+  }
+  return out;
+}
+
+// 手写克隆（比 JSON 深拷贝快一个数量级，搜索里每秒要调用几十万次）
+function cloneTiles(m) {
+  const o = {};
+  for (const k in m) { const t = m[k]; o[k] = { owner: t.owner, home: t.home }; }
+  return o;
+}
+function clonePieces(p) {
+  return { a: { r: p.a.r, c: p.a.c }, b: { r: p.b.r, c: p.b.c } };
+}
+
+function snapshot() {
+  return { tiles: cloneTiles(tiles), piece: clonePieces(piece), turn, steps, over };
+}
+
+function pushHistory() {
+  history.push(snapshot());
+  if (history.length > 300) history.shift();
+}
+
+// 必须深拷贝：回退后的 tiles/piece 会被继续修改，直接赋引用会把快照本体改坏
+function snapshotState(s) {
+  tiles = cloneTiles(s.tiles);
+  piece = clonePieces(s.piece);
+  turn = s.turn; steps = s.steps; over = s.over;
+}
+
+function checkWin() {
+  for (const who of ["a", "b"]) {
+    const p = piece[who], t = tileAt(p.r, p.c);
+    if (t && t.home && t.owner === other(who)) {
+      over = true;
+      document.getElementById("win-text").textContent = NAME[who] + " 获胜！";
+      overlay.classList.add("on");
+      return true;
+    }
+  }
+  return false;
+}
+
+function applyAction(act) {
+  if (act.type === "piece") {
+    movePieceTo(act.who, act.r, act.c);
+  } else {
+    const t = tiles[key(act.fr, act.fc)];
+    delete tiles[key(act.fr, act.fc)];
+    tiles[key(act.r, act.c)] = t;
+    for (const who of ["a", "b"]) {
+      if (piece[who].r === act.fr && piece[who].c === act.fc) {
+        piece[who] = { r: act.r, c: act.c };   // 棋子跟着板块走
+      }
+    }
+  }
+  if (checkWin()) { render(); return; }
+  steps--;
+  if (steps <= 0) endTurn();
+  else render();
+}
+
+function endTurn() {
+  if (over) return;
+
+  // 回合结束才校验连通规则；不过关则整回合作废，退回起点重走
+  if (!ruleOK(turn, tiles)) {
+    const bad = turn;
+    revertCount++;
+    if (revertCount <= MAX_REVERT) {
+      snapshotState(turnStart);
+      if (history.length > historyMark) history.length = historyMark;
+      selected = null; legal = [];
+      msgEl.textContent = NAME[bad] + " 回合结束时板块不满足连通规则，本回合作废，请重走";
+      render();
+      if (bad === "b" && aiEl.checked) { busy = true; setTimeout(aiPlay, 350); }
+      return;
+    }
+    msgEl.textContent = "（连续作废多次，本回合按现状接受）";
+  }
+
+  revertCount = 0;
+  turn = other(turn);
+  steps = 2;
+  turnStart = snapshot();
+  historyMark = history.length;
+  selected = null; legal = [];
+  render();
+  if (turn === "b" && aiEl.checked) {
+    busy = true;
+    setTimeout(aiPlay, 350);
+  }
+}
+
+function doAction(act) {
+  pushHistory();
+  applyAction(act);
+}
+
+/* ---------- 交互 ---------- */
+
+function selectPiece(who) {
+  if (over || busy || who !== turn) return;
+  selected = { type: "piece", r: piece[who].r, c: piece[who].c };
+  legal = pieceMoves(turn);
+  msgEl.textContent = "";
+  render();
+}
+
+function selectSlabAt(r, c) {
+  if (over || busy) return;
+  msgEl.textContent = "";
+  const moves = slabMoves(turn, r, c);
+  selected = { type: "slab", r, c };
+  legal = moves;
+  if (moves.length === 0) msgEl.textContent = "这块四面都被占住，动不了";
+  render();
+}
+
+function onClickCell(r, c, ev) {
+  if (over || busy) return;
+  msgEl.textContent = "";
+  // 1) 已选中，且点的格子在合法目标里 → 落子
+  if (selected && legal.some(m => m.r === r && m.c === c)) {
+    const act = selected.type === "piece"
+      ? { type: "piece", who: turn, r, c }
+      : { type: "slab", fr: selected.r, fc: selected.c, r, c };
+    selected = null; legal = [];
+    doAction(act);
+    return;
+  }
+  const t = tileAt(r, c);
+  const my = piece[turn];
+  const pieceHere = my.r === r && my.c === c;
+  const pieceSelected = selected && selected.type === "piece" && selected.r === r && selected.c === c;
+  const myTile = t && t.owner === turn;
+
+  // 2) Shift+点自家板块 = 直接抓板块（跳过棋子），省掉"再点一次"
+  if (ev && ev.shiftKey && myTile) { selectSlabAt(r, c); return; }
+  // 3) 自家棋子所在格：第一次点=选棋子（不看脚下板块归属，站在对方板块上也能动）
+  if (pieceHere && !pieceSelected) {
+    selected = { type: "piece", r, c };
+    legal = pieceMoves(turn);
+    render();
+    return;
+  }
+  // 4) 选自家板块
+  if (myTile) { selectSlabAt(r, c); return; }
+  if (t) msgEl.textContent = "那是对方的板块";
+  selected = null; legal = [];
+  render();
+}
+
+/* ---------- 电脑（红方） ---------- */
+
+// 棋子只能踩板块，所以用板块图上的 BFS 步数衡量"还差几步到家"
+function pathLen(from, to, map) {
+  if (from.r === to.r && from.c === to.c) return 0;
+  const seen = new Set([key(from.r, from.c)]);
+  let frontier = [from], d = 0;
+  while (frontier.length) {
+    d++;
+    const next = [];
+    for (const p of frontier) {
+      for (const [dr, dc] of DIRS) {
+        const r = p.r + dr, c = p.c + dc, k = key(r, c);
+        if (!inBounds(r, c) || seen.has(k) || !map[k]) continue;
+        if (r === to.r && c === to.c) return d;
+        seen.add(k);
+        next.push({ r, c });
+      }
+    }
+    frontier = next;
+  }
+  return Infinity;                                // 无路可走
+}
+
+const BLOCKED = 25;
+
+/* ---------- 评估特征 ----------
+   全部从 owner 视角：数值越大越好，权重 w 为训练得到。
+   训练脚本(训练/train.js)复用这份代码，改权重只需替换 W。 */
+const FEATURE_NAMES = [
+  "bias", "myPath", "foePath", "myManhattan", "foeManhattan", "myTileSpread",
+  "mobilityDiff", "invaded", "contact", "foeBlocked", "myBlocked", "canCapture",
+  "myWinNext", "foeWinNext"
+];
+// 自对弈进化训练得到（训练/train.js，--deep 1 用实战搜索配置对局）。
+// 在实战配置下对原始手写权重的得分率 42/60 = 70%。
+const W = [-0.238, 1.076, 2.503, 0.338, 0.266, 0.171, 0.119, -0.082, -0.689, 1.243, 0.132, -0.689, 0.146, -0.874];
+
+function features(owner) {
+  const foe = other(owner);
+  const tgtMine = homePos(foe, tiles) || HOME[foe];     // 我要去的家
+  const tgtFoe = homePos(owner, tiles) || HOME[owner];  // 对方要去的家
+  const myP = piece[owner], foeP = piece[foe];
+
+  const myRaw = pathLen(myP, tgtMine, tiles);
+  const foeRaw = pathLen(foeP, tgtFoe, tiles);
+  const myPath = Number.isFinite(myRaw) ? myRaw : BLOCKED;
+  const foePath = Number.isFinite(foeRaw) ? foeRaw : BLOCKED;
+
+  let myTileSpread = Infinity, contact = 0;
+  for (const k in tiles) {
+    if (tiles[k].owner !== owner) continue;
+    const [r, c] = k.split(",").map(Number);
+    const d = Math.abs(r - tgtMine.r) + Math.abs(c - tgtMine.c);
+    if (d < myTileSpread) myTileSpread = d;
+    for (const [dr, dc] of DIRS) {
+      const n = tiles[key(r + dr, c + dc)];
+      if (n && n.owner !== owner) contact++;
+    }
+  }
+  if (!Number.isFinite(myTileSpread)) myTileSpread = BLOCKED;
+
+  const myMoves = pieceMoves(owner), foeMoves = pieceMoves(foe);
+  const foeTile = tileAt(foeP.r, foeP.c);
+  const invaded = (foeTile && foeTile.owner === owner) ? 1 : 0;
+  const canCapture = myMoves.some(m => m.r === foeP.r && m.c === foeP.c) ? 1 : 0;
+
+  return [
+    1,
+    -myPath,
+    foePath,
+    -(Math.abs(myP.r - tgtMine.r) + Math.abs(myP.c - tgtMine.c)),
+    Math.abs(foeP.r - tgtFoe.r) + Math.abs(foeP.c - tgtFoe.c),
+    -myTileSpread,
+    myMoves.length - foeMoves.length,
+    -invaded,
+    contact,
+    foeRaw === Infinity ? 1 : 0,
+    myRaw === Infinity ? -1 : 0,
+    canCapture,
+    myPath <= 2 ? 1 : 0,          // 我下回合就能赢
+    foePath <= 2 ? 1 : 0          // 对方下回合就能赢
+  ];
+}
+
+function evalW(owner) {
+  const f = features(owner);
+  let s = 0;
+  for (let i = 0; i < f.length; i++) s += W[i] * f[i];
+  return s;
+}
+
+// 列出一个回合内所有走法组合（1 步或 2 步），两层都用 beam 剪枝
+function enumerateTurns(owner, beam) {
+  const base = snapshot();
+  const firsts = [];
+  for (const a of allActions(owner)) {
+    applyActionSilent(a);
+    const win = over;
+    firsts.push({ a, win, st: snapshot(), s: win ? Infinity : evalW(owner) });
+    snapshotState(base);
+  }
+  firsts.sort((x, y) => y.s - x.s);
+
+  const picked = firsts.slice(0, beam);
+  // beam 里必须留一个"走棋子"的先手。开局时挪板块的评估值远高于走子，
+  // 不保留的话前 beam 名全是挪板块，AI 永远不进攻、只会原地堵路。
+  if (picked.length && !picked.some(f => f.a.type === "piece")) {
+    const bp = firsts.find(f => f.a.type === "piece");
+    if (bp) picked[picked.length - 1] = bp;
+  }
+
+  const out = [];
+  for (const f of picked) {
+    if (f.win) { out.push({ acts: [f.a], win: true, st: f.st }); snapshotState(base); continue; }
+    // 只走这一步就结束回合
+    if (ruleOK(owner, f.st.tiles)) out.push({ acts: [f.a], win: false, st: f.st });
+    // 再走第二步
+    snapshotState(f.st);
+    const seconds = [];
+    for (const a2 of allActions(owner)) {
+      const mid = snapshot();
+      applyActionSilent(a2);
+      const win = over;
+      if (win) seconds.push({ a2, win: true, st: snapshot(), s: Infinity });
+      else if (ruleOK(owner, tiles)) seconds.push({ a2, win: false, st: snapshot(), s: evalW(owner) });
+      snapshotState(mid);
+    }
+    seconds.sort((x, y) => y.s - x.s);
+    for (const g of seconds.slice(0, beam)) {
+      out.push({ acts: [f.a, g.a2], win: g.win, st: g.st });
+    }
+    snapshotState(base);
+  }
+  snapshotState(base);
+  return out;
+}
+
+const WIN_VALUE = 1e6;
+
+// 某个状态下、某方一个回合能拿到的最好评估值
+function bestTurnValue(owner, beam) {
+  const base = snapshot();
+  const turns = enumerateTurns(owner, beam);
+  let best = -Infinity;
+  for (const t of turns) {
+    let v;
+    if (t.win) v = WIN_VALUE;
+    else { snapshotState(t.st); v = evalW(owner); }
+    if (v > best) best = v;
+  }
+  snapshotState(base);                 // 评估完必须还原，否则调用方状态被污染
+  return best === -Infinity ? evalW(owner) : best;
+}
+
+// 搜索本方最好的一回合；depth=2 时会考虑对方最佳回应
+function searchTurn(owner, opts) {
+  const o = opts || {};
+  const beam = o.beam || 6;
+  const depth = o.depth || 1;
+  const replyBeam = o.replyBeam || 3;
+  const foe = other(owner);
+  const base = snapshot();
+
+  let best = null, bestVal = -Infinity;
+  for (const t of enumerateTurns(owner, beam)) {
+    let v;
+    if (t.win) v = WIN_VALUE;
+    else {
+      snapshotState(t.st);
+      v = (depth >= 2) ? -bestTurnValue(foe, replyBeam) : evalW(owner);
+    }
+    if (v > bestVal) { bestVal = v; best = t.acts; }
+  }
+  snapshotState(base);
+  return best;
+}
+
+function allActions(owner) {
+  const acts = [];
+  for (const m of pieceMoves(owner)) acts.push({ type: "piece", who: owner, r: m.r, c: m.c });
+  for (const t of ownTiles(owner, tiles)) {
+    for (const m of slabMoves(owner, t.r, t.c)) {
+      acts.push({ type: "slab", fr: t.r, fc: t.c, r: m.r, c: m.c });
+    }
+  }
+  return acts;
+}
+
+function aiPlay() {
+  try { aiPlayInner(); }
+  catch (e) {
+    const el = document.getElementById("err");
+    el.style.display = "block";
+    el.textContent = "电脑出错：" + e.message;
+  }
+  finally { busy = false; render(); }
+}
+
+// 电脑的搜索配置。改这里必须同步改 训练/match.js 里的 DEPTH2，
+// 否则训练出来的权重是针对另一个对手调优的，实战会变弱。
+const AI_OPTS = { beam: 5, depth: 2, replyBeam: 2 };
+
+// 搜索一步并整回合执行；训练脚本也调用这个函数，保证训练和游玩完全一致
+function playTurn(owner, opts) {
+  if (over || turn !== owner || steps <= 0) return;
+  const plan = searchTurn(owner, opts);
+  if (!plan || !plan.length) { steps = 0; endTurn(); return; }
+  const rc = revertCount;
+  let i = 0;
+  while (i < plan.length && !over && turn === owner && steps > 0) {
+    pushHistory();
+    applyAction(plan[i]);
+    i++;
+    // 回合已结束(换手)，或因连通规则被整回合回退 → 计划作废，立刻停手。
+    // 不回退的话，后半段会落在已被还原的棋盘上，把板块数据写坏。
+    if (turn !== owner || revertCount !== rc) return;
+  }
+  if (!over && turn === owner && steps > 0) { steps = 0; endTurn(); }  // 计划只有一步，提前收手
+}
+
+function aiPlayInner() {
+  playTurn("b", AI_OPTS);
+}
+
+// 不触发换回合/胜负弹窗的试算
+function applyActionSilent(act) {
+  if (act.type === "piece") {
+    movePieceTo(act.who, act.r, act.c);
+  } else {
+    const t = tiles[key(act.fr, act.fc)];
+    delete tiles[key(act.fr, act.fc)];
+    tiles[key(act.r, act.c)] = t;
+    for (const who of ["a", "b"]) {
+      if (piece[who].r === act.fr && piece[who].c === act.fc) piece[who] = { r: act.r, c: act.c };
+    }
+  }
+  checkWinQuiet();
+}
+
+function checkWinQuiet() {
+  for (const who of ["a", "b"]) {
+    const p = piece[who], t = tileAt(p.r, p.c);
+    if (t && t.home && t.owner === other(who)) { over = true; return; }
+  }
+}
+
+/* ---------- 渲染 ---------- */
+
+function render() {
+  boardEl.innerHTML = "";
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const el = document.createElement("div");
+      el.className = "cell";
+      const t = tileAt(r, c);
+      if (t) {
+        el.classList.add(t.owner === "a" ? "tile-a" : "tile-b");
+        if (t.home) {
+          el.classList.add("home");
+          el.textContent = t.owner === "a" ? "A家" : "B家";
+        }
+      }
+      const myPieceHere = piece[turn].r === r && piece[turn].c === c;
+      if (!over && t && t.owner === turn && hintEl.checked && slabMoves(turn, r, c).length > 0) {
+        el.classList.add("canmove");
+      }
+      if (selected && selected.type === "slab" && selected.r === r && selected.c === c) el.classList.add("sel");
+      if (t && t.owner === turn && !over) el.style.cursor = "pointer";
+      if (legal.some(m => m.r === r && m.c === c)) el.classList.add("hint");
+      el.addEventListener("click", e => onClickCell(r, c, e));
+
+      for (const who of ["a", "b"]) {
+        if (piece[who].r === r && piece[who].c === c) {
+          const pe = document.createElement("div");
+          pe.className = "piece p-" + who;
+          pe.textContent = who === "a" ? "A" : "B";
+          pe.title = NAME[who] + "的棋子（点格子也行）";
+          el.appendChild(pe);   // 不拦截点击，交给格子统一处理
+        }
+      }
+      // 自家棋子压在自家板块上 → 给个一键抓板块的角标
+      if (!over && myPieceHere && t && t.owner === turn) {
+        const g = document.createElement("div");
+        g.className = "grip";
+        g.textContent = "块";
+        g.title = "选中脚下这块板块（棋子会跟着板块走）";
+        g.addEventListener("click", e => { e.stopPropagation(); selectSlabAt(r, c); });
+        el.appendChild(g);
+      }
+      boardEl.appendChild(el);
+    }
+  }
+  if (over) {
+    statusEl.innerHTML = "对局结束";
+  } else {
+    const cls = turn === "a" ? "dot-a" : "dot-b";
+    statusEl.innerHTML = `<span class="dot ${cls}"></span> ${NAME[turn]}走棋　剩余步数：${steps}`;
+  }
+  document.getElementById("btn-undo").disabled = history.length === 0;
+  if (selected) {
+    selEl.textContent = (selected.type === "piece" ? "已选：棋子" : "已选：板块")
+      + ` (${selected.r},${selected.c})　可走 ${legal.length} 处`;
+  } else {
+    selEl.textContent = `未选中。点自家棋子所在格或自家板块。${busy ? "（电脑思考中）" : ""}`;
+  }
+}
+
+/* ---------- 按钮 ---------- */
+
+document.getElementById("btn-end").onclick = () => {
+  if (over || busy) return;
+  selected = null; legal = [];
+  endTurn();
+};
+
+document.getElementById("btn-undo").onclick = () => {
+  if (busy || history.length === 0) return;
+  const ai = aiEl.checked;
+  while (history.length) {
+    const s = history.pop();
+    snapshotState(s);
+    if (!ai || s.turn === "a" || s.over) break;
+  }
+  over = false;
+  overlay.classList.remove("on");
+  selected = null; legal = []; busy = false;
+  msgEl.textContent = "";
+  render();
+};
+
+document.getElementById("btn-reset").onclick = () => { busy = false; init(); };
+
+// 切换规则/提示时，刷新当前选中板块的合法目标
+ruleEl.onchange = hintEl.onchange = () => {
+  if (selected && selected.type === "slab") legal = slabMoves(turn, selected.r, selected.c);
+  render();
+};
+document.getElementById("btn-again").onclick = () => { busy = false; init(); };
+
+init();
+</script>
+</body>
+</html>
